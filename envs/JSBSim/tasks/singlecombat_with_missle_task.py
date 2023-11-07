@@ -1,10 +1,10 @@
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 from collections import deque
 
 from .singlecombat_task import SingleCombatTask, HierarchicalSingleCombatTask
 from ..reward_functions import AltitudeReward, PostureReward, MissilePostureReward, EventDrivenReward, ShootPenaltyReward
-from ..core.simulatior import MissileSimulator
+from ..core.simulator import MissileSimulator
 from ..utils.utils import LLA2NEU, get_AO_TA_R
 
 

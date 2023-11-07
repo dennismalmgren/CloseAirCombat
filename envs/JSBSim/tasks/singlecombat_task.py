@@ -1,9 +1,9 @@
 import torch
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 from typing import Literal
 from .task_base import BaseTask
-from ..core.simulatior import AircraftSimulator
+from ..core.simulator import AircraftSimulator
 from ..core.catalog import Catalog as c
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout, SafeReturn
 from ..reward_functions import AltitudeReward, PostureReward, EventDrivenReward

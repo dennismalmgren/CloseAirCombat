@@ -165,9 +165,9 @@ class AircraftSimulator(BaseSimulator):
         self.jsbsim_exec = jsbsim.FGFDMExec(os.path.join(get_root_dir(), 'data'))
         self.jsbsim_exec.set_debug_level(0)
         self.jsbsim_exec.load_model(self.model)
-        Catalog.add_jsbsim_props(self.jsbsim_exec.query_property_catalog(""))
+        Catalog.add_jsbsim_props(self.jsbsim_exec.query_property_catalog("").split('\n'))
         self.jsbsim_exec.set_dt(self.dt)
-        self.clear_defalut_condition()
+        self.clear_default_condition()
 
         # assign new properties
         if new_state is not None:
@@ -189,7 +189,7 @@ class AircraftSimulator(BaseSimulator):
         # update inner property
         self._update_properties()
 
-    def clear_defalut_condition(self):
+    def clear_default_condition(self):
         default_condition = {
             Catalog.ic_long_gc_deg: 120.0,  # geodesic longitude [deg]
             Catalog.ic_lat_geod_deg: 60.0,  # geodesic latitude  [deg]

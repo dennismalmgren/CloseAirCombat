@@ -1,8 +1,8 @@
-import gym
-from gym.utils import seeding
+import gymnasium as gym
+from gymnasium.utils import seeding
 import numpy as np
 from typing import Dict, Any, Tuple
-from ..core.simulatior import AircraftSimulator, BaseSimulator
+from ..core.simulator import AircraftSimulator, BaseSimulator
 from ..tasks.task_base import BaseTask
 from ..utils.utils import parse_config
 

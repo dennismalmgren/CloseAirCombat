@@ -3,7 +3,7 @@ import math
 from enum import Enum
 from collections import namedtuple
 from numpy.linalg import norm
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 from ..utils.utils import in_range_deg
 
 """
@@ -550,6 +550,8 @@ class MixedCatalog(dict):
             jsbsim_props (list): list of 'name_jsbsim (access)' of jsbsim properties
         """
         for jsbsim_prop in jsbsim_props:
+            if len(jsbsim_prop) == 0:
+                continue
             [name_jsbsim, access] = jsbsim_prop.split(" ")
             access = re.sub(r"[\(\)]", "", access)  # remove parenthesis from the flag
             name = re.sub(r"_$", "", re.sub(r"[\-/\]\[]+", "_", name_jsbsim))  # get property name from jsbsim name
