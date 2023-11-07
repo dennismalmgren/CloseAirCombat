@@ -3,7 +3,7 @@ from matplotlib.pyplot import axis
 import torch
 import logging
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 from typing import List
 from .base_runner import Runner
 from algorithms.utils.buffer import SharedReplayBuffer

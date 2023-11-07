@@ -221,7 +221,8 @@ class TestJSBSimRunner:
         "--env-name SingleCombat --algorithm-name ppo --scenario-name 1v1/DodgeMissile/HierarchySelfplay",  # whether to use selfplay is optional
         "--env-name SingleCombat --algorithm-name ppo --scenario-name 1v1/DodgeMissile/HierarchyVsBaseline"])
     def test_training(self, args):
-        from scripts.train.train_jsbsim import make_train_env, make_eval_env, parse_args, get_config, Runner
+        
+        from scripts.train.train_jsbsim import make_train_env, make_eval_env, parse_args, get_config
         args += ' --experiment-name pytest --seed 1 --n-training-threads 1 --n-rollout-threads 5 --cuda' \
                 ' --log-interval 1 --save-interval 1 --use-eval --eval-interval 1 --eval-episodes 10' \
                 ' --num-mini-batch 5 --buffer-size 1000 --num-env-steps 1e4' \
@@ -230,7 +231,10 @@ class TestJSBSimRunner:
         args = args.split(' ')
         parser = get_config()
         all_args = parse_args(args, parser)
-
+        if all_args.use_selfplay:
+            from runner.selfplay_jsbsim_runner import SelfplayJSBSimRunner as Runner
+        else:
+            from runner.jsbsim_runner import JSBSimRunner as Runner
         # seed
         np.random.seed(all_args.seed)
         random.seed(all_args.seed)

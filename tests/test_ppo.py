@@ -4,7 +4,7 @@ import torch
 import pytest
 import numpy as np
 from itertools import product
-import gym.spaces
+import gymnasium.spaces
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
@@ -20,12 +20,12 @@ class TestPPO:
 
     @pytest.mark.parametrize("obs_space, act_space, batch_size", list(product(
         [       # obs_space
-            gym.spaces.Box(low=-1, high=1, shape=(18,))
+            gymnasium.spaces.Box(low=-1, high=1, shape=(18,))
         ], [    # act_space
-            gym.spaces.Discrete(5),
-            gym.spaces.MultiDiscrete([41, 41, 41, 30]),
-            gym.spaces.MultiBinary(4),
-            gym.spaces.Box(low=-1, high=1, shape=(4,)),
+            gymnasium.spaces.Discrete(5),
+            gymnasium.spaces.MultiDiscrete([41, 41, 41, 30]),
+            gymnasium.spaces.MultiBinary(4),
+            gymnasium.spaces.Box(low=-1, high=1, shape=(4,)),
         ], [    # batch_size
             1, 5
         ])))
@@ -50,7 +50,7 @@ class TestPPO:
 
     @pytest.mark.parametrize("obs_space, batch_size", list(product(
         [       # obs_space
-            gym.spaces.Box(low=-1, high=1, shape=(18,))
+            gymnasium.spaces.Box(low=-1, high=1, shape=(18,))
         ], [    # batch_size
             1, 5
         ])))
@@ -69,12 +69,12 @@ class TestPPO:
         [       # num_agents
             1, 2
         ], [    # obs_space
-            gym.spaces.Box(low=-1, high=1, shape=(18,))
+            gymnasium.spaces.Box(low=-1, high=1, shape=(18,))
         ], [    # act_space
-            gym.spaces.Discrete(5),
-            gym.spaces.MultiDiscrete([41, 41, 41, 30]),
-            gym.spaces.MultiBinary(4),
-            gym.spaces.Box(low=-1, high=1, shape=(4,)),
+            gymnasium.spaces.Discrete(5),
+            gymnasium.spaces.MultiDiscrete([41, 41, 41, 30]),
+            gymnasium.spaces.MultiBinary(4),
+            gymnasium.spaces.Box(low=-1, high=1, shape=(4,)),
         ], [    # num_mini_batch
             1, 2
         ], [    # data_chunk_length
@@ -113,12 +113,12 @@ class TestPPO:
         [       # num_agents
             1, 2
         ], [    # obs_space
-            gym.spaces.Box(low=-1, high=1, shape=(18,))
+            gymnasium.spaces.Box(low=-1, high=1, shape=(18,))
         ], [    # act_space
-            gym.spaces.Discrete(5),
-            gym.spaces.MultiDiscrete([41, 41, 41, 30]),
-            gym.spaces.MultiBinary(4),
-            gym.spaces.Box(low=-1, high=1, shape=(4,)),
+            gymnasium.spaces.Discrete(5),
+            gymnasium.spaces.MultiDiscrete([41, 41, 41, 30]),
+            gymnasium.spaces.MultiBinary(4),
+            gymnasium.spaces.Box(low=-1, high=1, shape=(4,)),
         ])))
     def test_ppo_trainer(self, num_agents, obs_space, act_space):
         args = get_config().parse_args(args='')

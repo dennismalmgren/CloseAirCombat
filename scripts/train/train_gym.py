@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import sys
 import os
-import gym
+import gymnasium
 import wandb
 import socket
 import torch
