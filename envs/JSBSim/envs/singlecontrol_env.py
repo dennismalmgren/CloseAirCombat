@@ -25,7 +25,8 @@ class SingleControlEnv(BaseEnv):
         self.heading_turn_counts = 0
         self.task.reset(self)
         obs = self.get_obs()
-        return self._pack(obs)
+        info = {}
+        return self._pack(obs), info
 
     def reset_simulators(self):
         if self.init_states is None:

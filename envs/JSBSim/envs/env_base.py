@@ -117,7 +117,7 @@ class BaseEnv(gym.Env):
         else:
             return self._pack(obs), info
   
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict]:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's observation. Accepts an action and
@@ -130,7 +130,8 @@ class BaseEnv(gym.Env):
             (tuple):
                 obs: agents' observation of the current environment
                 rewards: amount of rewards returned after previous actions
-                dones: whether the episode has ended, in which case further step() calls are undefined
+                terminateds: whether the episode has ended, in which case further step() calls are undefined
+                truncateds: if the episode was cut short due to a lack of time
                 info: auxiliary information
         """
         self.current_step += 1
@@ -150,19 +151,25 @@ class BaseEnv(gym.Env):
 
         obs = self.get_obs()
 
-        dones = {}
+        #dones = {}
+        terminations = {}
+        truncations = {}
         for agent_id in self.agents.keys():
-            done, info = self.task.get_termination(self, agent_id, info)
-            dones[agent_id] = [done]
+            termination, info = self.task.get_termination(self, agent_id, info)
+            truncation, info = self.task.get_truncation(self, agent_id, info)
+            terminations[agent_id] = [termination]
+            truncations[agent_id] = [truncation]
 
         rewards = {}
         for agent_id in self.agents.keys():
             reward, info = self.task.get_reward(self, agent_id, info)
             rewards[agent_id] = [reward]
+
         if self.dict_spaces:
-            return obs, rewards, dones, info
+            return obs, rewards, terminations, truncations, info
         else:
-            return self._pack(obs), self._pack(rewards), self._pack(dones), info
+            return self._pack(obs), self._pack(rewards), \
+                self._pack(terminations), self._pack(truncations), info
 
     def get_obs(self):
         """Returns all agent observations in a list.

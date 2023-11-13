@@ -86,7 +86,26 @@ class BaseTask(ABC):
         for reward_function in self.reward_functions:
             reward += reward_function.get_reward(self, env, agent_id)
         return reward, info
+    
+    def get_truncation(self, env, agent_id, info={}) -> Tuple[bool, dict]:
+        """
+        Aggregate truncation conditions
 
+        Args:
+            env: environment instance
+            agent_id: current agent id
+            info: additional info
+
+        Returns:
+            (tuple):
+                truncated(bool): whether the episode has truncated
+                info(dict): additional info
+        """
+        truncated = False
+        t, s, info = self.truncation_condition.get_termination(self, env, agent_id, info)
+        truncated = truncated or t
+        return truncated, info
+    
     def get_termination(self, env, agent_id, info={}) -> Tuple[bool, dict]:
         """
         Aggregate termination conditions

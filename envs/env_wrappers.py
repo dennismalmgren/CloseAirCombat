@@ -140,25 +140,34 @@ class DummyVecEnv(VecEnv):
 
     def step_wait(self):
         results = [env.step(a) for (a, env) in zip(self.actions, self.envs)]
-        obss, rewards, dones, infos = map(list, zip(*results))
+        obss, rewards, terminateds, truncateds, infos = map(list, zip(*results))
+        dones = [terminateds[i] | truncateds[i] for i in range(len(terminateds))]
         for (i, done) in enumerate(dones):
             if 'bool' in done.__class__.__name__:
                 if done:
-                    obss[i] = self.envs[i].reset()
+                    nxt = self.envs[i].reset()
+                    obss[i] = nxt[0]
+                    infos[i] = nxt[1]
             elif isinstance(done, (list, tuple, np.ndarray)):
                 if np.all(done):
-                    obss[i] = self.envs[i].reset()
+                    nxt = self.envs[i].reset()
+                    obss[i] = nxt[0]
+                    infos[i] = nxt[1]
             elif isinstance(done, dict):
                 if np.all(list(done.values())):
-                    obss[i] = self.envs[i].reset()
+                    nxt = self.envs[i].reset()
+                    obss[i] = nxt[0]
+                    infos[i] = nxt[1]                    
             else:
                 raise NotImplementedError("Unexpected type of done!")
         self.actions = None
         return self._flatten(obss), self._flatten(rewards), self._flatten(dones), np.array(infos)
 
     def reset(self):
-        obss = [env.reset() for env in self.envs]
-        return self._flatten(obss)
+        obss_info = [env.reset() for env in self.envs]
+        obss = [obs_info[0] for obs_info in obss_info]
+        infos = [obs_info[1] for obs_info in obss_info]
+        return self._flatten(obss), np.array(infos)
 
     def close(self):
         for env in self.envs:
@@ -189,19 +198,21 @@ def worker(remote: Connection, parent_remote: Connection, env_fn_wrappers):
         env_fn_wrappers (method): functions to create gym.Env instance.
     """
     def step_env(env, action):
-        obs, reward, done, info = env.step(action)
+        #TODO: Not sure about this reset call and how it impacts terminated/truncated.
+        obs, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
         if 'bool' in done.__class__.__name__:
             if done:
-                obs = env.reset()
+                obs, info = env.reset()
         elif isinstance(done, (list, tuple, np.ndarray)):
             if np.all(done):
-                obs = env.reset()
+                obs, info = env.reset()
         elif isinstance(done, dict):
             if np.all(list(done.values())):
-                obs = env.reset()
+                obs, info = env.reset()
         else:
             raise NotImplementedError("Unexpected type of done!")
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
 
     parent_remote.close()
     envs = [env_fn_wrapper() for env_fn_wrapper in env_fn_wrappers.x]
@@ -278,16 +289,20 @@ class SubprocVecEnv(VecEnv):
         results = [remote.recv() for remote in self.remotes]
         results = self._flatten_series(results)  # [[tuple] * in_series] * nremotes => [tuple] * nenvs
         self.waiting = False
-        obss, rewards, dones, infos = zip(*results)
-        return self._flatten(obss), self._flatten(rewards), self._flatten(dones), np.array(infos)
+        obss, rewards, terminateds, truncateds, infos = zip(*results)
+        return self._flatten(obss), self._flatten(rewards), \
+            self._flatten(terminateds), self._flatten(truncateds), np.array(infos)
 
     def reset(self):
         self._assert_not_closed()
         for remote in self.remotes:
             remote.send(('reset', None))
-        obss = [remote.recv() for remote in self.remotes]
-        obss = self._flatten_series(obss)
-        return self._flatten(obss)
+        obss_info = [remote.recv() for remote in self.remotes]
+        obss_info = self._flatten_series(obss_info)
+        obss = [obs_info[0] for obs_info in obss_info]
+        infos = [obs_info[1] for obs_info in obss_info]
+        #obss = self._flatten_series(obss)
+        return self._flatten(obss), infos
 
     def close_extras(self):
         if self.waiting:

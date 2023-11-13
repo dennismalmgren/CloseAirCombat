@@ -49,8 +49,8 @@ class JSBSimRunner(Runner):
                 values, actions, action_log_probs, rnn_states_actor, rnn_states_critic = self.collect(step)
 
                 # Obser reward and next obs
-                obs, rewards, dones, infos = self.envs.step(actions)
-
+                obs, rewards, terminated, truncated, infos = self.envs.step(actions)
+                dones = terminated | truncated
                 # Extra recorded information
                 for info in infos:
                     if 'heading_turn_counts' in info:
@@ -99,7 +99,7 @@ class JSBSimRunner(Runner):
 
     def warmup(self):
         # reset env
-        obs = self.envs.reset()
+        obs, _ = self.envs.reset()
         self.buffer.step = 0
         self.buffer.obs[0] = obs.copy()
 
@@ -138,7 +138,7 @@ class JSBSimRunner(Runner):
         total_episodes, eval_episode_rewards = 0, []
         eval_cumulative_rewards = np.zeros((self.n_eval_rollout_threads, *self.buffer.rewards.shape[2:]), dtype=np.float32)
 
-        eval_obs = self.eval_envs.reset()
+        eval_obs, _ = self.eval_envs.reset()
         eval_masks = np.ones((self.n_eval_rollout_threads, *self.buffer.masks.shape[2:]), dtype=np.float32)
         eval_rnn_states = np.zeros((self.n_eval_rollout_threads, *self.buffer.rnn_states_actor.shape[2:]), dtype=np.float32)
 

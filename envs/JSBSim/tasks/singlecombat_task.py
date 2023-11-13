@@ -30,8 +30,8 @@ class SingleCombatTask(BaseTask):
             ExtremeState(self.config),
             Overload(self.config),
             SafeReturn(self.config),
-            Timeout(self.config),
         ]
+        self.truncation_condition = Timeout(self.config)
 
     @property
     def num_agents(self) -> int:

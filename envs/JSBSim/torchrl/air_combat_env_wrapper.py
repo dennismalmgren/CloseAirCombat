@@ -324,8 +324,8 @@ class JSBSimWrapper(_EnvWrapper):
     def _reset_output_transform(self,
                                 reset_outputs_tuple: Tuple | np.ndarray) -> Tuple[Any, dict]:
         if is_single_agent_env(self._env):
-            obs = reset_outputs_tuple.squeeze()
-            info = {}
+            obs, info = reset_outputs_tuple
+            obs = obs.squeeze()
             return obs, info        
         else:
             raise NotImplementedError("Not implemented for multi-agent environments.")
@@ -390,12 +390,12 @@ class JSBSimWrapper(_EnvWrapper):
         """
         Must return a tuple: (obs, reward, terminated, truncated, done, info)."""
         if is_single_agent_env(self._env):
-            obs, rew, done, info = step_outputs_tuple
+            obs, rew, terminated, truncated, info = step_outputs_tuple
             obs = obs.squeeze(0)
             rew = rew.squeeze(0)
-            done = done.squeeze(0)
-            terminated = done.copy()
-            truncated = done.copy()
+            terminated = terminated.squeeze(0)
+            truncated = truncated.squeeze(0)
+            done = terminated or truncated
         else:
             raise NotImplementedError("Not implemented for multi-agent environments.")
         return obs, rew, terminated, truncated, done, info
