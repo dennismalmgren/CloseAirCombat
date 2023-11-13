@@ -54,7 +54,7 @@ def _get_prepare_config(parser: argparse.ArgumentParser):
             [for wandb usage], to specify user's name for simply collecting training data.
     """
     group = parser.add_argument_group("Prepare parameters")
-    group.add_argument("--env-name", type=str, default='JSBSim',
+    group.add_argument("--env-name", type=str, default='SingleControl',
                        help="specify the name of environment")
     group.add_argument("--algorithm-name", type=str, default='ppo', choices=["ppo", "mappo"],
                        help="Specifiy the algorithm (default ppo)")
@@ -276,7 +276,7 @@ def _get_eval_config(parser: argparse.ArgumentParser):
             number of episodes of a single evaluation.
     """
     group = parser.add_argument_group("Eval parameters")
-    group.add_argument("--use-eval", action='store_true', default=False,
+    group.add_argument("--use-eval", action='store_true', default=True,
                        help="by default, do not start evaluation. If set, start evaluation alongside with training.")
     group.add_argument("--n-eval-rollout-threads", type=int, default=1,
                        help="Number of parallel envs for evaluating rollout (default 1)")

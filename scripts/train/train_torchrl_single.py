@@ -19,10 +19,8 @@ from envs.env_wrappers import SubprocVecEnv, DummyVecEnv, ShareSubprocVecEnv, Sh
 
 def make_train_env(all_args):
     def get_env_fn(rank):
-        def init_env():
-            if all_args.env_name == "SingleCombat":
-                env = SingleCombatEnv(all_args.scenario_name)
-            elif all_args.env_name == "SingleControl":
+        def init_env():          
+            if all_args.env_name == "SingleControl":
                 env = SingleControlEnv(all_args.scenario_name)
             elif all_args.env_name == "MultipleCombat":
                 env = MultipleCombatEnv(all_args.scenario_name)
@@ -73,7 +71,7 @@ def make_eval_env(all_args):
 
 def parse_args(args, parser):
     group = parser.add_argument_group("JSBSim Env parameters")
-    group.add_argument('--scenario-name', type=str, default='1/heading',
+    group.add_argument('--scenario-name', type=str, default='singlecombat_simple',
                        help="Which scenario to run on")
     all_args = parser.parse_known_args(args)[0]
     return all_args

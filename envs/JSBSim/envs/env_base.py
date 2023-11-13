@@ -1,7 +1,7 @@
 import gymnasium as gym
 from gymnasium.utils import seeding
 import numpy as np
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 from ..core.simulator import AircraftSimulator, BaseSimulator
 from ..tasks.task_base import BaseTask
 from ..utils.utils import parse_config
@@ -19,7 +19,9 @@ class BaseEnv(gym.Env):
     """
     metadata = {"render.modes": ["human", "txt"]}
 
-    def __init__(self, config_name: str):
+    def __init__(self, 
+                 config_name: str,
+                 dict_spaces = False,):
         # basic args
         self.config = parse_config(config_name)
         self.max_steps = getattr(self.config, 'max_steps', 100)  # type: int
@@ -28,8 +30,10 @@ class BaseEnv(gym.Env):
         self.center_lon, self.center_lat, self.center_alt = \
             getattr(self.config, 'battle_field_center', (120.0, 60.0, 0.0))
         self._create_records = False
+        self.dict_spaces = dict_spaces
         self.load()
-
+        self.categorical_action_encoding = True
+        
     @property
     def num_agents(self) -> int:
         return self.task.num_agents
@@ -45,7 +49,11 @@ class BaseEnv(gym.Env):
     @property
     def agents(self) -> Dict[str, AircraftSimulator]:
         return self._jsbsims
-
+    
+    @property
+    def agent_ids(self) -> List[str]:
+        return self._agent_ids
+    
     @property
     def time_interval(self) -> int:
         return self.agent_interaction_steps / self.sim_freq
@@ -73,7 +81,7 @@ class BaseEnv(gym.Env):
         _default_team_uid = list(self._jsbsims.keys())[0][0]
         self.ego_ids = [uid for uid in self._jsbsims.keys() if uid[0] == _default_team_uid]
         self.enm_ids = [uid for uid in self._jsbsims.keys() if uid[0] != _default_team_uid]
-
+        self._agent_ids = self.ego_ids + self.enm_ids
         # Link jsbsims
         for key, sim in self._jsbsims.items():
             for k, s in self._jsbsims.items():
@@ -103,8 +111,12 @@ class BaseEnv(gym.Env):
         # reset task
         self.task.reset(self)
         obs = self.get_obs()
-        return self._pack(obs)
-
+        info = {}
+        if self.dict_spaces:
+            return obs, info
+        else:
+            return self._pack(obs), info
+  
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
@@ -147,8 +159,10 @@ class BaseEnv(gym.Env):
         for agent_id in self.agents.keys():
             reward, info = self.task.get_reward(self, agent_id, info)
             rewards[agent_id] = [reward]
-
-        return self._pack(obs), self._pack(rewards), self._pack(dones), info
+        if self.dict_spaces:
+            return obs, rewards, dones, info
+        else:
+            return self._pack(obs), self._pack(rewards), self._pack(dones), info
 
     def get_obs(self):
         """Returns all agent observations in a list.
