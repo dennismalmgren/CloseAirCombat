@@ -161,7 +161,8 @@ class DummyVecEnv(VecEnv):
             else:
                 raise NotImplementedError("Unexpected type of done!")
         self.actions = None
-        return self._flatten(obss), self._flatten(rewards), self._flatten(dones), np.array(infos)
+        return self._flatten(obss), self._flatten(rewards), self._flatten(terminateds), \
+                    self._flatten(truncateds), np.array(infos)
 
     def reset(self):
         obss_info = [env.reset() for env in self.envs]
@@ -200,7 +201,7 @@ def worker(remote: Connection, parent_remote: Connection, env_fn_wrappers):
     def step_env(env, action):
         #TODO: Not sure about this reset call and how it impacts terminated/truncated.
         obs, reward, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
+        done = terminated | truncated
         if 'bool' in done.__class__.__name__:
             if done:
                 obs, info = env.reset()
@@ -302,7 +303,7 @@ class SubprocVecEnv(VecEnv):
         obss = [obs_info[0] for obs_info in obss_info]
         infos = [obs_info[1] for obs_info in obss_info]
         #obss = self._flatten_series(obss)
-        return self._flatten(obss), infos
+        return self._flatten(obss), np.array(infos)
 
     def close_extras(self):
         if self.waiting:
@@ -361,26 +362,28 @@ class ShareDummyVecEnv(DummyVecEnv, ShareVecEnv):
 
     def step_wait(self):
         results = [env.step(a) for (a, env) in zip(self.actions, self.envs)]
-        obs, share_obs, rews, dones, infos = map(list, zip(*results))
+        obs, share_obs, rews, truncateds, terminateds, infos = map(list, zip(*results))
+        dones = [truncated | terminated for truncated, terminated in zip(truncateds, terminateds)]
         for (i, done) in enumerate(dones):
             if 'bool' in done.__class__.__name__:
                 if done:
-                    obs[i], share_obs[i] = self.envs[i].reset()
+                    obs[i], share_obs[i], infos = self.envs[i].reset()
             elif isinstance(done, (list, tuple, np.ndarray)):
                 if np.all(done):
-                    obs[i], share_obs[i] = self.envs[i].reset()
+                    obs[i], share_obs[i], infos = self.envs[i].reset()
             elif isinstance(done, dict):
                 if np.all(list(done.values())):
-                    obs[i], share_obs[i] = self.envs[i].reset()
+                    obs[i], share_obs[i], infos = self.envs[i].reset()
             else:
                 raise NotImplementedError("Unexpected type of done!")
         self.actions = None
-        return self._flatten(obs), self._flatten(share_obs), self._flatten(rews), self._flatten(dones), np.array(infos)
+        return self._flatten(obs), self._flatten(share_obs), self._flatten(rews), \
+            self._flatten(terminateds), self._flatten(truncateds), np.array(infos)
 
     def reset(self):
         results = [env.reset() for env in self.envs]
-        obs, share_obs = map(np.array, zip(*results))
-        return obs, share_obs
+        obs, share_obs, infos = map(np.array, zip(*results))
+        return obs, share_obs, infos
 
 
 def shareworker(remote: Connection, parent_remote: Connection, env_fn_wrappers):
@@ -393,19 +396,20 @@ def shareworker(remote: Connection, parent_remote: Connection, env_fn_wrappers):
         env_fn_wrappers (method): functions to create gym.Env instance.
     """
     def step_env(env, action):
-        obs, share_obs, reward, done, info = env.step(action)
+        obs, share_obs, reward, terminateds, truncateds, info = env.step(action)
+        done = [truncated | terminated for truncated, terminated in zip(truncateds, terminateds)]
         if 'bool' in done.__class__.__name__:
             if done:
-                obs, share_obs = env.reset()
+                obs, share_obs, info = env.reset()
         elif isinstance(done, (list, tuple, np.ndarray)):
             if np.all(done):
-                obs, share_obs = env.reset()
+                obs, share_obs, info = env.reset()
         elif isinstance(done, dict):
             if np.all(list(done.values())):
-                obs, share_obs = env.reset()
+                obs, share_obs, info = env.reset()
         else:
             raise NotImplementedError("Unexpected type of done!")
-        return obs, share_obs, reward, done, info
+        return obs, share_obs, reward, terminateds, truncateds, info
 
     parent_remote.close()
     envs = [env_fn_wrapper() for env_fn_wrapper in env_fn_wrappers.x]
@@ -464,8 +468,9 @@ class ShareSubprocVecEnv(SubprocVecEnv, ShareVecEnv):
         results = [remote.recv() for remote in self.remotes]
         results = self._flatten_series(results) # [[tuple] * in_series] * nremotes => [tuple] * nenvs
         self.waiting = False
-        obs, share_obs, rewards, dones, infos = zip(*results) 
-        return self._flatten(obs), self._flatten(share_obs), self._flatten(rewards), self._flatten(dones), np.array(infos)
+        obs, share_obs, rewards, terminateds, truncateds, infos = zip(*results) 
+        return self._flatten(obs), self._flatten(share_obs), self._flatten(rewards), \
+            self._flatten(terminateds), self._flatten(truncateds), np.array(infos)
 
     def reset(self):
         self._assert_not_closed()
@@ -473,5 +478,5 @@ class ShareSubprocVecEnv(SubprocVecEnv, ShareVecEnv):
             remote.send(('reset', None))
         results = [remote.recv() for remote in self.remotes]
         results = self._flatten_series(results)
-        obs, share_obs = zip(*results)
-        return self._flatten(obs), self._flatten(share_obs)
+        obs, share_obs, infos = zip(*results)
+        return self._flatten(obs), self._flatten(share_obs), np.array(infos)

@@ -1,0 +1,43 @@
+#Hydra
+hydra:
+  job:
+    chdir: True
+    
+# Logger
+logger: wandb
+exp_name: discrete_sac_heading
+record_interval: 1
+mode: online
+
+# Environment
+env_name: 1/heading
+frame_skip: 1
+from_pixels: false
+reward_scaling: 1.0
+init_env_steps: 1000
+seed: 42
+num_eval_envs: 5
+
+# Collector
+env_per_collector: 1
+max_frames_per_traj: 1000
+total_frames: 100000
+init_random_frames: 1000
+frames_per_batch: 1000 # max_frames_per_traj * env_per_collector
+
+# Replay Buffer
+prb: 0
+buffer_size: 1000000
+
+# Optimization
+utd_ratio: 1.0
+gamma: 0.99
+batch_size: 64
+lr: 3.0e-4
+weight_decay: 0.0
+target_update_polyak: 0.995
+target_entropy_weight: 0.2
+# default is 0.98 but needs to be decreased for env
+# with small action space
+
+device: cpu

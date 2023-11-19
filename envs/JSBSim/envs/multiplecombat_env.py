@@ -40,7 +40,8 @@ class MultipleCombatEnv(BaseEnv):
         self.task.reset(self)
         obs = self.get_obs()
         share_obs = self.get_state()
-        return self._pack(obs), self._pack(share_obs)
+        info = {}
+        return self._pack(obs), self._pack(share_obs), info
 
     def reset_simulators(self):
         # Assign new initial condition here!
@@ -48,7 +49,7 @@ class MultipleCombatEnv(BaseEnv):
             sim.reload()
         self._tempsims.clear()
 
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict]:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's observation. Accepts an action and
@@ -95,9 +96,13 @@ class MultipleCombatEnv(BaseEnv):
         # for enm_id in self.enm_ids:
         #     rewards[enm_id] = [enm_reward]
 
-        dones = {}
+        terminateds = {}
+        truncateds = {}
         for agent_id in self.agents.keys():
             done, info = self.task.get_termination(self, agent_id, info)
-            dones[agent_id] = [done]
+            terminateds[agent_id] = [done]
+            truncated, info = self.task.get_truncation(self, agent_id, info)
+            truncateds[agent_id] = [truncated]
 
-        return self._pack(obs), self._pack(share_obs), self._pack(rewards), self._pack(dones), info
+        return self._pack(obs), self._pack(share_obs), self._pack(rewards), \
+            self._pack(terminateds), self._pack(truncateds), info

@@ -36,7 +36,8 @@ class SingleCombatEnv(BaseEnv):
         self.reset_simulators()
         self.task.reset(self)
         obs = self.get_obs()
-        return self._pack(obs)
+        info = {}
+        return self._pack(obs), info
 
     def reset_simulators(self):
         # switch side

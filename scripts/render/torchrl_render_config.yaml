@@ -1,0 +1,86 @@
+#Hydra
+hydra:
+  job:
+    chdir: True
+
+env:
+  name: 1/heading
+  task: "" #this is the task.
+  exp_name: ${env.name}_SAC
+  max_episode_steps: 1000
+  seed: 42
+
+# Logger
+logger:
+  backend: wandb
+  mode: online
+  eval_iter: 10000
+
+exp_name: cont_sac_heading
+record_interval: 1
+# Environment
+env_name: 1/heading
+frame_skip: 1
+from_pixels: false
+reward_scaling: 1.0
+init_env_steps: 1000
+seed: 42
+
+# Collector
+env_per_collector: 1
+max_frames_per_traj: 1000
+total_frames: 100000
+init_random_frames: 1000
+frames_per_batch: 1000 # max_frames_per_traj * env_per_collector
+
+# Replay Buffer
+prb: 0
+buffer_size: 1000000
+
+# Optimization
+utd_ratio: 1.0
+gamma: 0.99
+batch_size: 256
+lr: 3.0e-4
+weight_decay: 0.0
+target_update_polyak: 0.995
+target_entropy_weight: 0.2
+# default is 0.98 but needs to be decreased for env
+# with small action space
+train:
+  save_interval: 50000
+
+device: cpu
+# optim
+optim:
+  utd_ratio: 1.0
+  gamma: 0.99
+  loss_function: l2
+  lr: 3.0e-4
+  weight_decay: 0.0
+  batch_size: 256
+  target_update_polyak: 0.995
+  alpha_init: 1.0
+  adam_eps: 1.0e-8
+
+# collector
+collector:
+  total_frames: 1_000_000
+  init_random_frames: 1000
+  frames_per_batch: 1000
+  device: cpu
+  env_per_collector: 1
+  reset_at_each_iter: False
+
+network:
+  hidden_sizes: [256, 256]
+  activation: "relu"
+  default_policy_scale: 1.0
+  scale_lb: 0.1
+  device: "cuda:0"
+
+# replay buffer
+replay_buffer:
+  size: 1000000
+  prb: 0 # use prioritized experience replay
+  scratch_dir: ${env.exp_name}_${env.seed}

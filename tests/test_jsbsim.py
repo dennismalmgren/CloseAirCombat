@@ -32,35 +32,40 @@ class TestSingleControlEnv:
 
         env.seed(0)
         action_space.seed(0)
-        obs = env.reset()
+        obs, info = env.reset()
         assert obs.shape == obs_shape
 
         obs_buf = [obs]
         act_buf = []
         rew_buf = []
-        done_buff = []
+        terminated_buff = []
+        truncated_buff = []
         while True:
             actions = np.array([action_space.sample() for _ in range(env.num_agents)])
-            obs, reward, done, info = env.step(actions)
+            obs, reward, terminated, truncated, info = env.step(actions)
             assert obs.shape == obs_shape and actions.shape == act_shape \
-                and reward.shape == reward_shape and done.shape == done_shape
+                and reward.shape == reward_shape and \
+                    terminated.shape == done_shape and truncated.shape == done_shape
             act_buf.append(actions)
             obs_buf.append(obs)
             rew_buf.append(reward)
-            done_buff.append(done)
-            if done:
+            terminated_buff.append(terminated)
+            truncated_buff.append(truncated)
+            if terminated or truncated:
                 assert env.current_step <= env.max_steps
                 break
 
         # Repetition test (same seed => same data)
         env.seed(0)
-        obs = env.reset()
+        obs, info = env.reset()
         t = 0
         assert np.linalg.norm(obs - obs_buf[t]) < 1e-8
-        while t < len(done_buff):
-            obs, reward, done, info = env.step(act_buf[t])
+        while t < len(truncated_buff):
+            obs, reward, terminated, truncated, info = env.step(act_buf[t])
             assert np.linalg.norm(obs - obs_buf[t + 1]) < 1e-8 \
-                and np.all(reward == rew_buf[t]) and np.all(done == done_buff[t])
+                and np.all(reward == rew_buf[t]) and \
+                    np.all(terminated == terminated_buff[t]) and \
+                        np.all(truncated == truncated_buff[t])
             t += 1
 
     @pytest.mark.parametrize("vecenv", [DummyVecEnv, SubprocVecEnv])
@@ -74,17 +79,18 @@ class TestSingleControlEnv:
         reward_shape = (parallel_num, envs.num_agents, 1)
         done_shape = (parallel_num, envs.num_agents, 1)
 
-        obss = envs.reset()
+        obss, infos = envs.reset()
         assert obss.shape == obs_shape
 
         actions = np.array([[envs.action_space.sample() for _ in range(envs.num_agents)] for _ in range(parallel_num)])
         while True:
-            obss, rewards, dones, infos = envs.step(actions)
+            obss, rewards, terminateds, truncateds, infos = envs.step(actions)
             assert obss.shape == obs_shape and actions.shape == act_shape \
-                and rewards.shape == reward_shape and dones.shape == done_shape \
+                and rewards.shape == reward_shape and terminateds.shape == done_shape \
+                and truncateds.shape == done_shape \
                 and infos.shape[0] == parallel_num and isinstance(infos[0], dict)
             # terminate if any of the parallel envs has been done
-            if np.any(dones):
+            if np.any(terminateds) or np.any(truncateds):
                 break
         envs.close()
 
@@ -109,39 +115,44 @@ class TestSingleCombatEnv:
 
         env.seed(0)
         action_space.seed(0)
-        obs = env.reset()
+        obs, info = env.reset()
         assert obs.shape == obs_shape
 
         obs_buf = [obs]
         act_buf = []
         rew_buf = []
-        done_buff = []
+        terminateds_buff = []
+        truncateds_buff = []
         while True:
             # Legal action inputs: List / np.ndarray
             if env.current_step % 2 == 0:
                 actions = [action_space.sample() for _ in range(env.num_agents)]
             else:
                 actions = np.array([action_space.sample() for _ in range(env.num_agents)])
-            obs, rewards, dones, info = env.step(actions)
-            assert obs.shape == obs_shape and rewards.shape == reward_shape and dones.shape == done_shape
+            obs, rewards, terminateds, truncateds, info = env.step(actions)
+            assert obs.shape == obs_shape and rewards.shape == reward_shape and \
+                terminateds.shape == done_shape and truncateds.shape == done_shape
+            
             # save previous data
             act_buf.append(actions)
             obs_buf.append(obs)
             rew_buf.append(rewards)
-            done_buff.append(dones)
-            if np.all(dones):
+            terminateds_buff.append(terminateds)
+            truncateds_buff.append(truncateds)
+            if np.all(terminateds) or np.all(truncateds):
                 assert env.current_step <= env.max_steps
                 break
 
         # Repetition test (same seed => same data)
         env.seed(0)
-        obs = env.reset()
+        obs, info = env.reset()
         t = 0
         assert np.linalg.norm(obs - obs_buf[t]) < 1e-8
-        while t < len(done_buff):
-            obs, rewards, dones, info = env.step(act_buf[t])
+        while t < len(truncateds_buff):
+            obs, rewards, terminateds, truncateds, info = env.step(act_buf[t])
             assert np.linalg.norm(obs - obs_buf[t + 1]) < 1e-8 \
-                and np.all(rewards == rew_buf[t]) and np.all(dones == done_buff[t])
+                and np.all(rewards == rew_buf[t]) and np.all(terminateds == terminateds_buff[t]) \
+                and np.all(truncateds == truncateds_buff[t])
             t += 1
 
     @pytest.mark.parametrize("config", ["1v1/NoWeapon/vsBaseline", "1v1/NoWeapon/Selfplay"])
@@ -149,19 +160,19 @@ class TestSingleCombatEnv:
         # if no weapon, once enemy die, env terminate!
         env = SingleCombatEnv(config)
         env.seed(0)
-        obs = env.reset()
+        obs, info = env.reset()
         env.agents[env.ego_ids[0]].crash()
         actions = np.array([env.action_space.sample() for _ in range(env.num_agents)])
-        obs, rewards, dones, info = env.step(actions)
+        obs, rewards, terminateds, truncateds, info = env.step(actions)
         assert np.min(rewards) < -100  # crash reward!
-        assert np.all(dones)
+        assert np.all(terminateds)
 
     @pytest.mark.parametrize("config", ["1v1/DodgeMissile/vsBaseline", "1v1/DodgeMissile/Selfplay"])
     def test_agent_shotdown(self, config):
         # if has weapon, once enemy die, env terminate until no missile warning!
         env = SingleCombatEnv(config)
         env.seed(0)
-        obs = env.reset()
+        obs, info = env.reset()
         crash_id = env.ego_ids[0]   # ego shotdown
         while True:
             # mannual crash
@@ -172,15 +183,15 @@ class TestSingleCombatEnv:
                 crash_obs = obs[0]
             actions = np.array([env.action_space.sample() for _ in range(env.num_agents)])
 
-            obs, rewards, dones, info = env.step(actions)
+            obs, rewards, terminateds, truncateds, info = env.step(actions)
 
-            if np.all(dones):
+            if np.all(terminateds):
                 break
             elif env.current_step == 2:
                 assert np.min(rewards) < -50  # shot down reward!
             elif env.current_step > 2:
                 # ego obs is not changed!
-                assert dones[0][0] == True \
+                assert terminateds[0][0] == True \
                     and np.linalg.norm(obs[0, :9] - crash_obs[:9]) < 1e-8 \
                     and rewards[0][0] == 0.0 \
                     and any([missile.is_alive for missile in env.agents[crash_id].launch_missiles])
@@ -196,18 +207,19 @@ class TestSingleCombatEnv:
         reward_shape = (parallel_num, envs.num_agents, 1)
         done_shape = (parallel_num, envs.num_agents, 1)
 
-        obss = envs.reset()
+        obss, info = envs.reset()
         assert obss.shape == obs_shape
 
         # Legal action inputs: List / np.ndarray (first ego, then enm)
         actions = [[envs.action_space.sample() for _ in range(envs.num_agents)] for _ in range(parallel_num)]
         while True:
-            obss, rewards, dones, infos = envs.step(actions)
+            obss, rewards, terminateds, truncateds, infos = envs.step(actions)
             # check parallel env's data type
-            assert obss.shape == obs_shape and rewards.shape == reward_shape and dones.shape == done_shape \
+            assert obss.shape == obs_shape and rewards.shape == reward_shape and \
+                terminateds.shape == done_shape and truncateds.shape == done_shape \
                 and infos.shape[0] == parallel_num and isinstance(infos[0], dict)
             # terminate if any of the parallel envs has been done
-            if np.any(np.all(dones, axis=1)):
+            if np.any(np.all(terminateds, axis=1)) or np.any(np.all(truncateds, axis=1)):
                 break
         envs.close()
 
@@ -298,39 +310,45 @@ class TestMultipleCombatEnv:
         # DataType test
         env.seed(0)
         env.action_space.seed(0)
-        obs, share_obs = env.reset()
+        obs, share_obs, info = env.reset()
         assert obs.shape == obs_shape and share_obs.shape == share_obs_shape
 
         obs_buf = [obs]
         share_buf = [share_obs]
         act_buf = []
         rew_buf = []
-        done_buff = []
+        terminateds_buff = []
+        truncateds_buff = []
         while True:
             actions = [env.action_space.sample() for _ in range(env.num_agents)]
-            obs, share_obs, rewards, dones, info = env.step(actions)
-            assert obs.shape == obs_shape and rewards.shape == reward_shape and dones.shape == done_shape and share_obs_shape
+            obs, share_obs, rewards, terminateds, truncateds, info = env.step(actions)
+            assert obs.shape == obs_shape and rewards.shape == reward_shape and \
+                terminateds.shape == done_shape and share_obs_shape == share_obs.shape \
+                and truncateds.shape == done_shape
+            
             # save previous data
             obs_buf.append(obs)
             share_buf.append(share_obs)
             act_buf.append(actions)
             rew_buf.append(rewards)
-            done_buff.append(dones)
-            if np.any(dones[0]):
+            terminateds_buff.append(terminateds)
+            truncateds_buff.append(truncateds)
+            if np.any(terminateds[0]) or np.any(truncateds[0]):
                 assert env.current_step <= env.max_steps
                 break
 
         # Repetition test (same seed => same data)
         env.seed(0)
-        obs, share_obs = env.reset()
+        obs, share_obs, info = env.reset()
         t = 0
         assert np.linalg.norm(obs - obs_buf[t]) < 1e-8 \
             and np.linalg.norm(share_obs - share_buf[t]) < 1e-8
-        while t < len(done_buff):
-            obs, share_obs, rewards, dones, info = env.step(act_buf[t])
+        while t < len(terminateds_buff):
+            obs, share_obs, rewards, terminateds, truncateds, info = env.step(act_buf[t])
             assert np.linalg.norm(obs - obs_buf[t + 1]) < 1e-8 \
                 and np.linalg.norm(share_obs - share_buf[t+1]) < 1e-8 \
-                and np.all(rewards == rew_buf[t]) and np.all(dones == done_buff[t])
+                and np.all(rewards == rew_buf[t]) and np.all(terminateds == terminateds_buff[t]) \
+                and np.all(truncateds == truncateds_buff[t])
             t += 1
 
     def test_agent_die(self):
@@ -350,15 +368,16 @@ class TestMultipleCombatEnv:
             if env.current_step == 60:
                 env.agents[enemy1_id].crash()
 
-            obs, share_obs, rewards, dones, info = env.step(actions)
+            obs, share_obs, rewards, terminateds, truncateds, info = env.step(actions)
             rewards = env._unpack(rewards)
-            dones = env._unpack(dones)
+            terminateds = env._unpack(terminateds)
+            truncateds = env._unpack(truncateds)
             if env.current_step > 20:
-                assert dones[partner_id] == True and rewards[partner_id] == 0.0
+                assert terminateds[partner_id] == True and rewards[partner_id] == 0.0
                 if env.current_step > 40:
-                    assert dones[enemy0_id] == True and rewards[enemy0_id] == 0.0
+                    assert terminateds[enemy0_id] == True and rewards[enemy0_id] == 0.0
             if env.current_step == 61:
-                assert np.all(list(dones.values()))
+                assert np.all(list(terminateds.values()))
                 break
 
         # if has weapon, once all enemies die, env terminate until no missile warning!
@@ -374,14 +393,14 @@ class TestMultipleCombatEnv:
                 from envs.JSBSim.core.simulator import MissileSimulator
                 env.add_temp_simulator(MissileSimulator.create(env.agents[enemy1_id], env.agents[uid], uid="C0000"))
 
-            obs, share_obs, rewards, dones, info = env.step(actions)
+            obs, share_obs, rewards, terminateds, truncateds, info = env.step(actions)
             rewards = env._unpack(rewards)
-            dones = env._unpack(dones)
+            terminateds = env._unpack(terminateds)
             if env.current_step > 20:
-                assert dones[enemy0_id] == True and rewards[enemy0_id] == 0.0
+                assert terminateds[enemy0_id] == True and rewards[enemy0_id] == 0.0
                 if env.current_step > 40:
-                    assert dones[enemy1_id] == True and rewards[enemy1_id] == 0.0
-            if np.all(list(dones.values())):
+                    assert terminateds[enemy1_id] == True and rewards[enemy1_id] == 0.0
+            if np.all(list(terminateds.values())):
                 assert not env._tempsims["C0000"].is_alive
                 break
 
@@ -398,11 +417,12 @@ class TestMultipleCombatEnv:
         done_shape = (parallel_num, envs.num_agents, 1)
 
         # DataType test
-        obs, share_obs = envs.reset()
+        obs, share_obs, info = envs.reset()
         assert obs.shape == obs_shape and share_obs.shape == share_obs_shape
         while True:
             actions = np.array([[envs.action_space.sample() for _ in range(envs.num_agents)] for _ in range(parallel_num)])
-            obs, share_obs, rewards, dones, info = envs.step(actions)
-            assert obs.shape == obs_shape and rewards.shape == reward_shape and dones.shape == done_shape and share_obs_shape
+            obs, share_obs, rewards, terminateds, truncateds, info = envs.step(actions)
+            assert obs.shape == obs_shape and rewards.shape == reward_shape and \
+                terminateds.shape == done_shape and truncateds.shape == done_shape and share_obs_shape == share_obs.shape
             break
         envs.close()

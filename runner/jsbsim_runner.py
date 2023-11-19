@@ -152,8 +152,8 @@ class JSBSimRunner(Runner):
             eval_rnn_states = np.array(np.split(_t2n(eval_rnn_states), self.n_eval_rollout_threads))
 
             # Obser reward and next obs
-            eval_obs, eval_rewards, eval_dones, eval_infos = self.eval_envs.step(eval_actions)
-
+            eval_obs, eval_rewards, eval_terminateds, eval_truncateds, eval_infos = self.eval_envs.step(eval_actions)
+            eval_dones = eval_terminateds | eval_truncateds
             eval_cumulative_rewards += eval_rewards
             eval_dones_env = np.all(eval_dones.squeeze(axis=-1), axis=-1)
             total_episodes += np.sum(eval_dones_env)
