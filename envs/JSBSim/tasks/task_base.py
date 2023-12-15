@@ -84,7 +84,9 @@ class BaseTask(ABC):
         """
         reward = 0.0
         for reward_function in self.reward_functions:
-            reward += reward_function.get_reward(self, env, agent_id)
+            func_reward = reward_function.get_reward(self, env, agent_id)
+            reward += func_reward
+            info["cruise_missile_event_reward"] = func_reward
         return reward, info
     
     def get_truncation(self, env, agent_id, info={}) -> Tuple[bool, dict]:

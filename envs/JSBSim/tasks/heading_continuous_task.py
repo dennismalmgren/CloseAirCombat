@@ -62,9 +62,10 @@ class HeadingTaskContinuous(BaseTask):
 
     def load_action_space(self):
         # aileron, elevator, rudder, throttle
-        self.action_space = spaces.Box(
-            low=np.asarray([-1.0, -1.0, -1.0, 0.4], dtype=np.float32)
-            ,high=np.asarray([1.0, 1.0, 1.0, 0.9], dtype=np.float32))
+        self.action_space = spaces.Box(low=-1.0, high=1.0, dtype=np.float32, shape=(4,))
+        # self.action_space = spaces.Box(
+        #     low=np.asarray([-1.0, -1.0, -1.0, 0.4], dtype=np.float32)
+        #     ,high=np.asarray([1.0, 1.0, 1.0, 0.9], dtype=np.float32))
 
     def get_obs(self, env, agent_id):
         """

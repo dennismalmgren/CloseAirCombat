@@ -108,6 +108,7 @@ class BaseEnv(gym.Env):
         for sim in self._jsbsims.values():
             sim.reload()
         self._tempsims.clear()
+
         # reset task
         self.task.reset(self)
         obs = self.get_obs()
@@ -163,8 +164,9 @@ class BaseEnv(gym.Env):
         rewards = {}
         for agent_id in self.agents.keys():
             reward, info = self.task.get_reward(self, agent_id, info)
+            
             rewards[agent_id] = [reward]
-
+            info['cruise_missile_event_reward'] = info["cruise_missile_event_reward"] #todo: move all keys
         if self.dict_spaces:
             return obs, rewards, terminations, truncations, info
         else:

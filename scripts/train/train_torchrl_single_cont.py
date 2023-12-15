@@ -99,6 +99,14 @@ def main(cfg: DictConfig):  # noqa: F821
     #optimizer_alpha.load_state_dict(load_state['optimizer_alpha'])
     #optimizer_critic.load_state_dict(load_state['optimizer_critic'])
     #optimizer_actor.load_state_dict(load_state['optimizer_actor'])
+    load_dir = '/home/dennismalmgren/repos/CloseAirCombat/pretrained/2023-11-18/lowlevel'
+    #load_dir = '/home/dennismalmgren/repos/CloseAirCombat/scripts/train/outputs/2023-11-18/22-57-45'
+    load_state = torch.load(f"{load_dir}/training_snapshot_3000000.pt")
+    model.load_state_dict(load_state['model'])
+    loss_module.load_state_dict(load_state['loss'])
+    optimizer_alpha.load_state_dict(load_state['optimizer_alpha'])
+    optimizer_critic.load_state_dict(load_state['optimizer_critic'])
+    optimizer_actor.load_state_dict(load_state['optimizer_actor'])
 
     # Main loop
     start_time = time.time()

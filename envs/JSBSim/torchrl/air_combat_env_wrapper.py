@@ -31,6 +31,7 @@ from torchrl.envs.utils import (
 
 from envs.JSBSim.envs.env_base import BaseEnv
 from envs.JSBSim.envs.singlecontrol_env_cont import SingleControlEnv
+from envs.JSBSim.envs.singlecontrol_env_cont_missile import SingleControlMissileEnv
 from envs.JSBSim.envs.singlecombat_env import SingleCombatEnv
 from envs.JSBSim.envs.multiplecombat_env import MultipleCombatEnv
 from envs.JSBSim.torchrl.tensor_specs import ConvertibleMultiOneHotDiscreteTensorSpec
@@ -38,7 +39,8 @@ from envs.JSBSim.torchrl.tensor_specs import ConvertibleMultiOneHotDiscreteTenso
 __all__ = ["JSBSimWrapper", "JSBSimEnv"]
 
 def is_single_agent_env(env: BaseEnv) -> bool: 
-    return isinstance(env, SingleControlEnv) or isinstance(env, SingleCombatEnv)
+    return isinstance(env, SingleControlEnv) or isinstance(env, SingleCombatEnv) \
+    or isinstance(env, SingleControlMissileEnv)
 
 class JSBSimWrapper(_EnvWrapper):
 
@@ -105,7 +107,7 @@ class JSBSimWrapper(_EnvWrapper):
     def _make_specs(
         self, env: BaseEnv
     ) -> None:
-        if isinstance(env, SingleControlEnv) or isinstance(env, SingleCombatEnv):
+        if is_single_agent_env(env):
             self.action_spec = CompositeSpec(
                     {
                         "action": self._jsbsim_to_torchrl_spec_transform(
@@ -439,7 +441,7 @@ class JSBSimWrapper(_EnvWrapper):
             source.update({"done": done})
             source.update({"terminated": terminated})
             source.update({"truncated": truncated})
-
+            source.update({"cruise_missile_event_reward": torch.tensor([info["cruise_missile_event_reward"]])})
             tensordict_out = TensorDict(
                 source = source,
                 batch_size = tensordict.batch_size, 

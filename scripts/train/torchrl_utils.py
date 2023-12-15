@@ -28,49 +28,76 @@ from torchrl.modules import MLP, ProbabilisticActor, ValueOperator
 from torchrl.modules.distributions import TanhNormal
 from torchrl.objectives import SoftUpdate
 from torchrl.objectives.sac import SACLoss
+from torchrl.data import CompositeSpec
+
+from torchrl.modules import (
+    ActorValueOperator,
+    ConvNet,
+    MLP,
+    OneHotCategorical,
+    ProbabilisticActor,
+    TanhNormal,
+    ValueOperator,
+)
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
 from envs.JSBSim.torchrl.air_combat_env_wrapper import JSBSimWrapper
 from envs.JSBSim.envs.singlecontrol_env_cont import SingleControlEnv
+from envs.JSBSim.envs.singlecontrol_env_cont_missile import SingleControlMissileEnv
 
 # ====================================================================
 # Environment utils
 # -----------------
 
 
-def env_maker(cfg, device="cpu"):
+def env_maker(cfg, lowlevelpolicy):
+    env = SingleControlMissileEnv(cfg.env_name, lowlevelpolicy)
+    wrapped_env = JSBSimWrapper(env, categorical_action_encoding=False)
+    return wrapped_env 
+
+def env_maker_ctrl(cfg):
     env = SingleControlEnv(cfg.env_name)
     wrapped_env = JSBSimWrapper(env, categorical_action_encoding=False)
     return wrapped_env 
 
-
-def apply_env_transforms(env, max_episode_steps=1000):
+def apply_env_transforms(env):# max_episode_steps=1000):
     transformed_env = TransformedEnv(
         env,
         Compose(
             InitTracker(),
-            StepCounter(max_episode_steps),
+            StepCounter(),
             DoubleToFloat(),
             RewardSum(),
         ),
     )
     return transformed_env
 
+def make_ppo_environment(cfg, lowlevelpolicy):
+    env = env_maker(cfg, lowlevelpolicy=lowlevelpolicy)
+    train_env = apply_env_transforms(env)
+    eval_env = TransformedEnv(
+        env,
+        train_env.transform.clone(),
+    )
+    eval_env.eval()
+    return train_env, eval_env
 
 def make_environment(cfg):
     """Make environments for training and evaluation."""
+
     parallel_env = ParallelEnv(
-        cfg.env_per_collector,
-        EnvCreator(lambda cfg=cfg: env_maker(cfg)),
+        cfg.collector.env_per_collector,
+        EnvCreator(lambda cfg=cfg: env_maker_ctrl(cfg)),
     )
     parallel_env.set_seed(cfg.seed)
 
-    train_env = apply_env_transforms(parallel_env, cfg.max_frames_per_traj)
+    train_env = apply_env_transforms(parallel_env)#, cfg.collector.max_frames_per_traj)
 
     eval_env = TransformedEnv(
         ParallelEnv(
-            cfg.env_per_collector,
-            EnvCreator(lambda cfg=cfg: env_maker(cfg)),
+            cfg.collector.env_per_collector,
+            EnvCreator(lambda cfg=cfg: env_maker_ctrl(cfg)),
         ),
         train_env.transform.clone(),
     )
@@ -81,6 +108,20 @@ def make_environment(cfg):
 # Collector and replay buffer
 # ---------------------------
 
+def eval_ppo_model(policy, test_env, num_episodes=3):
+    test_rewards = []
+    for _ in range(num_episodes):
+        td_test = test_env.rollout(
+            policy=policy,
+            auto_reset=True,
+            auto_cast_to_device=True,
+            break_when_any_done=True,
+            max_steps=10_000_000,
+        )
+        reward = td_test["next", "episode_reward"][td_test["next", "done"]]
+        test_rewards.append(reward.cpu())
+    del td_test
+    return torch.cat(test_rewards, 0).mean()
 
 def make_collector(cfg, train_env, actor_model_explore):
     """Make collector."""
@@ -91,6 +132,21 @@ def make_collector(cfg, train_env, actor_model_explore):
         frames_per_batch=cfg.collector.frames_per_batch,
         total_frames=cfg.collector.total_frames,
         device=cfg.collector.device,
+    )
+    collector.set_seed(cfg.env.seed)
+    return collector
+
+
+def make_ppo_collector(cfg, train_env, actor_model_explore):
+    """Make collector."""
+    collector = SyncDataCollector(
+        train_env,
+        actor_model_explore,
+        init_random_frames=cfg.collector.init_random_frames,
+        frames_per_batch=cfg.collector.frames_per_batch,
+        total_frames=cfg.collector.total_frames,
+        device=cfg.collector.device,
+        max_frames_per_traj=-1
     )
     collector.set_seed(cfg.env.seed)
     return collector
@@ -134,7 +190,64 @@ def make_replay_buffer(
 # ====================================================================
 # Model
 # -----
+def make_ppo_modules(cfg, eval_env):
+    #begin by using separate nets for value and policy. easier.
+    in_keys = ["observation"]
+    action_spec = eval_env.action_spec
+    if eval_env.batch_size:
+        action_spec = action_spec[(0,) * len(eval_env.batch_size)]
 
+    num_outputs = eval_env.action_spec.space.n
+    distribution_class = OneHotCategorical
+    distribution_kwargs = {}
+    policy_net_kwargs = {
+        "num_cells": cfg.network.hidden_sizes,
+        "out_features": num_outputs,
+        "activation_class": get_activation(cfg),
+    }   
+
+    policy_net = MLP(**policy_net_kwargs)
+
+    policy_module = TensorDictModule(
+        module = policy_net,
+        in_keys=in_keys,
+        out_keys=["logits"]
+    )
+
+    policy_module = ProbabilisticActor(
+        policy_module,
+        in_keys=["logits"],
+        spec=CompositeSpec(action=eval_env.action_spec),
+        distribution_class = distribution_class,
+        distribution_kwargs = distribution_kwargs,
+        return_log_prob=True,
+        default_interaction_type=InteractionType.RANDOM,
+    )
+
+    value_net = MLP(
+        activation_class=torch.nn.ReLU,
+        out_features = 1,
+        num_cells = cfg.network.hidden_sizes,
+    )
+
+    value_module = ValueOperator(
+        module = value_net,
+        in_keys=in_keys,
+    )
+
+    return policy_module, value_module
+
+def make_ppo_models(cfg, eval_env):
+    policy_module, value_module = make_ppo_modules(
+        cfg, eval_env
+    )
+    
+    with torch.no_grad():
+        td = eval_env.reset()
+        td = policy_module(td)
+        td = value_module(td)
+
+    return policy_module, value_module
 
 def make_sac_agent(cfg, train_env, eval_env, device):
     """Make SAC agent."""

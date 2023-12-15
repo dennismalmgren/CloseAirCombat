@@ -122,11 +122,17 @@ class AircraftSimulator(BaseSimulator):
             if key == 'num_missiles':
                 self.num_missiles = value  # type: int
                 self.num_left_missiles = self.num_missiles  # type: int
+            if key == "num_anticruise_missiles":
+                self.num_anticruise_missiles = value
+                self.num_left_anticruise_missiles = self.num_anticruise_missiles
+
         # fixed simulator links
         self.partners = []  # type: List[AircraftSimulator]
         self.enemies = []   # type: List[AircraftSimulator]
+
         # temp simulator links
         self.launch_missiles = []   # type: List[MissileSimulator]
+        self.launch_anticruise_missiles = []   # type: List[AntiCruiseMissileSimulator]
         self.under_missiles = []    # type: List[MissileSimulator]
         # initialize simulator
         self.reload()
@@ -153,13 +159,15 @@ class AircraftSimulator(BaseSimulator):
         """Reload aircraft simulator
         """
         super().reload()
-
+        self.num_anticruise_missiles = 1
         # reset temp simulator links
         self.bloods = 100
         self.__status = AircraftSimulator.ALIVE
         self.launch_missiles.clear()
         self.under_missiles.clear()
+        self.launch_anticruise_missiles.clear()
         self.num_left_missiles = self.num_missiles
+        self.num_left_anticruise_missiles = self.num_anticruise_missiles
 
         # load JSBSim FDM
         self.jsbsim_exec = jsbsim.FGFDMExec(os.path.join(get_root_dir(), 'data'))
@@ -234,6 +242,7 @@ class AircraftSimulator(BaseSimulator):
             self.jsbsim_exec = None
         self.partners = []
         self.enemies = []
+        self.target_missiles = []
 
     def _update_properties(self):
         # update position
@@ -326,7 +335,6 @@ class AircraftSimulator(BaseSimulator):
 
 
 class MissileSimulator(BaseSimulator):
-
     INACTIVE = -1
     LAUNCHED = 0
     HIT = 1

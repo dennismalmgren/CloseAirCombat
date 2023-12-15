@@ -1,12 +1,15 @@
 from .env_base import BaseEnv
 from ..tasks.heading_continuous_task import HeadingTaskContinuous
+from ..tasks.single_missile_defense_task import SingleMissileDefenseTask
+from ..core.cruise_missile_simulator import CruiseMissileSimulator
+import numpy as np
 
-
-class SingleControlEnv(BaseEnv):
+class SingleControlMissileEnv(BaseEnv):
     """
     SingleControlEnv is an fly-control env for single agent with no enemy fighters.
     """
-    def __init__(self, config_name: str):
+    def __init__(self, config_name: str, lowlevelpolicy):
+        self.lowlevelpolicy = lowlevelpolicy
         super().__init__(config_name)
         # Env-Specific initialization here!
         assert len(self.agents.keys()) == 1, f"{self.__class__.__name__} only supports 1 aircraft!"
@@ -15,7 +18,7 @@ class SingleControlEnv(BaseEnv):
     def load_task(self):
         taskname = getattr(self.config, 'task', None)
         if taskname == 'heading':
-            self.task = HeadingTaskContinuous(self.config)
+            self.task = SingleMissileDefenseTask(self.config, self.lowlevelpolicy)
         else:
             raise NotImplementedError(f'Unknown taskname: {taskname}')
 
@@ -46,3 +49,4 @@ class SingleControlEnv(BaseEnv):
         for idx, sim in enumerate(self.agents.values()):
             sim.reload(self.init_states[idx])
         self._tempsims.clear()
+        
