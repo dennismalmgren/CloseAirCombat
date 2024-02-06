@@ -22,7 +22,6 @@ from torchrl.objectives import DQNLoss, HardUpdate
 from torchrl.record.loggers import generate_exp_name, get_logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from torchrl.modules import EGreedyModule
-from torchrl.envs import ExplorationType, set_exploration_type
 from torchrl.data import BinaryDiscreteTensorSpec
 from tensordict import TensorDict
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
@@ -256,23 +255,22 @@ def main(cfg: "DictConfig"):  # noqa: F821
         if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
             i * frames_in_batch * frame_skip
         ) // test_interval:
-            with torch.no_grad(), set_exploration_type(ExplorationType.MODE):
-                eval_actor.eval()
-                actor_weights = TensorDict.from_module(actor, as_module=True)
-                eval_actor_weights = TensorDict.from_module(eval_actor, as_module=True)
-                eval_actor_weights.data.copy_(actor_weights.data)
+            eval_actor.eval()
+            actor_weights = TensorDict.from_module(actor, as_module=True)
+            eval_actor_weights = TensorDict.from_module(eval_actor, as_module=True)
+            eval_actor_weights.data.copy_(actor_weights.data)
 
-                eval_start = time.time()
-                test_rewards = eval_model(
-                    eval_actor, test_env, num_episodes=cfg_logger_num_test_episodes
-                )
-                eval_time = time.time() - eval_start
-                log_info.update(
-                    {
-                        "eval/reward": test_rewards.mean(),
-                        "eval/time": eval_time,
-                    }
-                ) 
+            eval_start = time.time()
+            test_rewards = eval_model(
+                eval_actor, test_env, num_episodes=cfg_logger_num_test_episodes
+            )
+            eval_time = time.time() - eval_start
+            log_info.update(
+                {
+                    "eval/reward": test_rewards.mean(),
+                    "eval/time": eval_time,
+                }
+            ) 
 
         if logger:
             for key, value in log_info.items():
