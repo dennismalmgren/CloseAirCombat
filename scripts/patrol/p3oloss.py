@@ -146,7 +146,9 @@ class P3OLoss(PPOLoss):
             separate_losses=separate_losses,
             **kwargs,
         )
+        beta = 1.0
         self.register_buffer("clip_epsilon", torch.tensor(clip_epsilon))
+        self.register_buffer("beta", torch.tensor(beta))
 
     @property
     def _clip_bounds(self):
@@ -199,8 +201,21 @@ class P3OLoss(PPOLoss):
 
         log_weight_minus_1 = log_weight.exp() - 1
         tau = 4.0
-        beta = 15.0
-        gain = torch.sigmoid(tau * log_weight_minus_1) * 4 / tau * advantage
+#        gain = torch.sigmoid(tau * log_weight_minus_1) * 4 / tau * advantage
+        gain = torch.sgn(log_weight_minus_1) * (torch.exp(torch.abs(log_weight_minus_1)) - 1) * advantage
+        #Calculate KL
+        # previous_dist = self.actor_network.build_dist_from_params(tensordict)
+        # with self.actor_network_params.to_module(
+        #     self.actor_network
+        # ) if self.functional else contextlib.nullcontext():
+        #     current_dist = self.actor_network.get_dist(tensordict)
+        # try:
+        #     kl = torch.distributions.kl.kl_divergence(previous_dist, current_dist)
+        # except NotImplementedError:
+        #     x = previous_dist.sample((self.samples_mc_kl,))
+        #     kl = (previous_dist.log_prob(x) - current_dist.log_prob(x)).mean(0)
+        # kl = kl.unsqueeze(-1)
+        neg_objective_loss = gain #- self.beta * kl
 
 #        gain1 = log_weight.exp() * advantage
 
@@ -208,7 +223,7 @@ class P3OLoss(PPOLoss):
 #        gain2 = log_weight_clip.exp() * advantage
 
  #       gain = torch.stack([gain1, gain2], -1).min(dim=-1)[0]
-        td_out = TensorDict({"loss_objective": -gain.mean()}, [])
+        td_out = TensorDict({"loss_objective": -neg_objective_loss.mean()}, [])
 
         #if self.entropy_bonus:
         #    entropy = self.get_entropy_bonus(dist)

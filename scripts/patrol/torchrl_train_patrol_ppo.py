@@ -253,10 +253,10 @@ def main(cfg: "DictConfig"):  # noqa: F821
         )
 
         # Get test rewards
-        with torch.no_grad(), set_exploration_type(ExplorationType.MODE):
-            if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
-                i * frames_in_batch * frame_skip
-            ) // test_interval:
+        if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
+            i * frames_in_batch * frame_skip
+        ) // test_interval:
+            with torch.no_grad(), set_exploration_type(ExplorationType.MODE):
                 eval_actor.eval()
                 actor_weights = TensorDict.from_module(actor, as_module=True)
                 eval_actor_weights = TensorDict.from_module(eval_actor, as_module=True)

@@ -56,8 +56,8 @@ def make_base_env(render_mode: str = None):
                             ActionMask(),
                             RenameTransform(in_keys=["action_mask"], out_keys=["mask"], create_copy=True),
                             StepCounter(max_steps=1000),
+                            RewardScaling(loc=0, scale=0.001),
                             RewardSum(),
-                            RewardScaling(loc=0, scale=0.01),
                          ))
     return env
 

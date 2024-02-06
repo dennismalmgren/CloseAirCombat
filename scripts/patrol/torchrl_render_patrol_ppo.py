@@ -69,9 +69,9 @@ def main(cfg: "DictConfig"):  # noqa: F821
         else:
             outputs_folder = "../../"
     
-    run_id = "2024-02-02/07-26-59/"
-    model_load_filename = "PPO_PPO_PatrolEnvGrid_76bbbe90_24_02_02-07_27_01_ppo_iter_890.pt"
-    load_model_dir = outputs_folder + run_id + "saved_models/e1/"
+    run_id = "2024-02-06/21-36-25/"
+    model_load_filename = "PPO_PPO_PatrolEnvGrid_6e2e7a3c_24_02_06-21_36_54_iter_174.pt"
+    load_model_dir = outputs_folder + run_id + "saved_models/e2/"
 
     print('Loading model from ' + load_model_dir)
     loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
@@ -93,16 +93,17 @@ def main(cfg: "DictConfig"):  # noqa: F821
     state_history = []
     loc_h_history = []
     loc_w_history = []
-    while not torch.any(td["done"]):
-        td = eval_actor(td)
-        td = test_env.step(td)
-        grid, state, (loc_h, loc_w) = test_env.render()
-        grid_history.append(grid)
-        state_history.append(state)
-        loc_h_history.append(loc_h)
-        loc_w_history.append(loc_w)
-        episode_tds.append(td.clone())
-        td = step_mdp(td)
+    with set_exploration_type(ExplorationType.MODE):
+        while not torch.any(td["done"]):
+            td = eval_actor(td)
+            td = test_env.step(td)
+            grid, state, (loc_h, loc_w) = test_env.render()
+            grid_history.append(grid)
+            state_history.append(state)
+            loc_h_history.append(loc_h)
+            loc_w_history.append(loc_w)
+            episode_tds.append(td.clone())
+            td = step_mdp(td)
 
     episode_td = torch.stack(episode_tds).to_tensordict()
     sh_stack = np.stack(state_history)

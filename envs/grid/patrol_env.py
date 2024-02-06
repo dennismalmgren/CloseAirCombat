@@ -92,10 +92,7 @@ class PatrolEnv(gym.Env):
         self._update_state_history()
 
     def _calculate_reward(self):
-        reward_tot = 0
-        for h in range(self.height):
-            for w in range(self.width):
-                reward_tot += self.dist_matrix_no_dir[self.loc_h, self.loc_w, self.dir.value, h, w] * self.expected_arrivals_grid[h, w]
+        reward_tot = np.sum(self.dist_matrix_no_dir[self.loc_h, self.loc_w, self.dir.value] * self.expected_arrivals_grid)
         #return the mean expected reachability
         #we can do cvar here.
         return -reward_tot / self.size
