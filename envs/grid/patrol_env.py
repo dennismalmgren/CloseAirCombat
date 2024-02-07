@@ -25,8 +25,8 @@ class PatrolEnv(gym.Env):
     }
 
     def __init__(self, render_mode: Optional[str] = None):
-        self.width: int = 10
-        self.height: int = 5
+        self.width: int = 100
+        self.height: int = 50
         self.size: int = self.width * self.height
         self.dir: Dir = Dir.E
         self.loc_h: int = 0

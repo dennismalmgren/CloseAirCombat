@@ -5,8 +5,8 @@ env:
 
 # collector
 collector:
-  frames_per_batch: 4000
-  total_frames: 3_000_000
+  frames_per_batch: 1000
+  total_frames: 10_000_000
 
 # logger
 logger:
@@ -16,7 +16,7 @@ logger:
   exp_name: PPO
   test_interval: 40_000
   num_test_episodes: 5
-  mode: disabled  
+  mode: online  
 
 # Optim
 optim:
