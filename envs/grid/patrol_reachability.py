@@ -18,7 +18,7 @@ def fill_in_dir(distances, index_grid_h, index_grid_w, height, width, start_dir)
             distances[start_h, start_w, start_dir, end_h, end_w, end_dir] = manhattan(start_point, index_grid_h[end_h, end_w], index_grid_w[end_h, end_w])
             #MH + 2 region (left)
             end_h = slice(start_h, height - 1)
-            end_w = slice(0, start_w - 1)
+            end_w = slice(0, max(0, start_w - 1))
             distances[start_h, start_w, start_dir, end_h, end_w, end_dir] = manhattan(start_point, index_grid_h[end_h, end_w], index_grid_w[end_h, end_w]) + 2
             #MH + 2 region (right)
             end_h = slice(start_h, height - 1)
@@ -26,7 +26,7 @@ def fill_in_dir(distances, index_grid_h, index_grid_w, height, width, start_dir)
             distances[start_h, start_w, start_dir, end_h, end_w, end_dir] = manhattan(start_point, index_grid_h[end_h, end_w], index_grid_w[end_h, end_w]) + 2
             #MH + 4 region
             end_h = slice(start_h, height - 1)
-            end_w = slice(start_w - 1, start_w + 2)
+            end_w = slice(max(0, start_w - 1), start_w + 2)
             distances[start_h, start_w, start_dir, end_h, end_w, end_dir] = manhattan(start_point, index_grid_h[end_h, end_w], index_grid_w[end_h, end_w]) + 4
             #Starting point
             distances[start_h, start_w, start_dir, start_h, start_w, end_dir] = 0
@@ -105,7 +105,7 @@ def fill_in_dir(distances, index_grid_h, index_grid_w, height, width, start_dir)
             distances[start_h, start_w, start_dir, end_h, end_w, end_dir] = manhattan(start_point, index_grid_h[end_h, end_w], index_grid_w[end_h, end_w])
             #MH region (bottom left)
             end_h = slice(start_h + 1, height)
-            end_w = slice(0, start_w - 1)
+            end_w = slice(0, max(0, start_w - 1))
             distances[start_h, start_w, start_dir, end_h, end_w, end_dir] = manhattan(start_point, index_grid_h[end_h, end_w], index_grid_w[end_h, end_w])
             #MH + 2 region (top right)
             end_h = slice(0, start_h)
@@ -113,7 +113,7 @@ def fill_in_dir(distances, index_grid_h, index_grid_w, height, width, start_dir)
             distances[start_h, start_w, start_dir, end_h, end_w, end_dir] = manhattan(start_point, index_grid_h[end_h, end_w], index_grid_w[end_h, end_w]) + 2
             #MH + 2 region (bottom right)
             end_h = slice(start_h + 1, height)
-            end_w = slice(start_w - 1, width - 1)
+            end_w = slice(max(0, start_w - 1), width - 1)
             distances[start_h, start_w, start_dir, end_h, end_w, end_dir] = manhattan(start_point, index_grid_h[end_h, end_w], index_grid_w[end_h, end_w]) + 2            #MH + 4 region (left)
             #MH + 4 region (right)
             end_h = slice(start_h, start_h + 1)

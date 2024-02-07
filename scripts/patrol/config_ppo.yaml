@@ -16,7 +16,7 @@ logger:
   exp_name: PPO
   test_interval: 40_000
   num_test_episodes: 5
-  mode: online  
+  mode: disabled  
 
 # Optim
 optim:

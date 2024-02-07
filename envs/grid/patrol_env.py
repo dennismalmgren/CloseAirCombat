@@ -25,15 +25,20 @@ class PatrolEnv(gym.Env):
     }
 
     def __init__(self, render_mode: Optional[str] = None):
-        self.width: int = 100
-        self.height: int = 50
+        self.width: int = 10
+        self.height: int = 5
         self.size: int = self.width * self.height
         self.dir: Dir = Dir.E
         self.loc_h: int = 0
         self.loc_w: int = 0
-
-        #obs is self.loc, self.dir, followed by intensities.
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(2 + self.height * self.width,))
+        self.observation_mode = "plain"
+        if self.observation_mode == "pixels":
+            #First we give the grid. This has intensity values.
+            #Then we give our location. That has a direction value (0.25, 0.5, 0.75, 1.0)
+            #Finally we give the reachability from our location. This is a distance value.
+            self.observation_space = spaces.Box(low=0, high=1.0, shape=(self.height, self.width, 3), dtype=np.uint8)
+        else:
+            self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(3 + self.height * self.width,))
         self.action_space = spaces.Discrete(3) #straight, turn left, turn right
         self.dir_move_map = {
             (Dir.N, 0): (-1, 0),
@@ -117,13 +122,20 @@ class PatrolEnv(gym.Env):
         return obs, info
 
     def _create_obs(self) -> ObsType:
-        returned_grid = np.copy(self.expected_arrivals_grid)
-        self_loc = self._loc1d() / self.size
-        self_dir = self.dir.value / 4
-        
-        obs = np.concatenate((np.asarray([self_loc, self_dir]),
-                              returned_grid.flatten().astype(np.float32)))
-        return obs
+        if self.observation_mode == "pixels":
+            returned_grid = np.copy(self.expected_arrivals_grid)
+            returned_loc = np.zeros((self.height, self.width), dtype = np.float32)
+            returned_loc[self.loc_h, self.loc_w] =  1 / (self.dir.value + 1)
+            returned_reach = self.dist_matrix_no_dir[self.loc_h, self.loc_w, self.dir.value] / np.max(np.nan_to_num(self.dist_matrix_no_dir))
+            obs = np.stack((returned_grid, returned_loc, returned_reach), axis = -1)
+            return obs
+        else:
+            returned_grid = np.copy(self.expected_arrivals_grid)
+            self_dir = self.dir.value / 4
+            
+            obs = np.concatenate((np.asarray([self.loc_h / self.height, self.loc_w / self.width, self_dir]),
+                                returned_grid.flatten().astype(np.float32)))
+            return obs
     
     def _action_mask_for(self, loc_h: int, loc_w: int, dir: Dir) -> np.ndarray:
         action_mask = np.ones(3, dtype=np.bool_)
