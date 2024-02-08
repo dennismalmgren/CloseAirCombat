@@ -24,7 +24,8 @@ class PatrolEnv(gym.Env):
         "render_modes": ["rgb_array"]
     }
 
-    def __init__(self, render_mode: Optional[str] = None):
+    def __init__(self, 
+                 render_mode: Optional[str] = None):
         self.width: int = 100
         self.height: int = 50
         self.size: int = self.width * self.height

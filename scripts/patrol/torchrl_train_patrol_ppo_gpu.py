@@ -14,7 +14,6 @@ from torchrl.envs import (
     RewardScaling, step_mdp, ActionMask
 )
 
-
 from torchrl.collectors import RandomPolicy, SyncDataCollector
 from tensordict.nn import TensorDictSequential
 from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
@@ -45,19 +44,20 @@ def main(cfg: "DictConfig"):  # noqa: F821
     test_interval = cfg.logger.test_interval // frame_skip
     
     # Create models (check utils_atari.py)
-    actor, critic = make_ppo_models(device="cpu")
+    actor, critic = make_ppo_models()
     actor, critic = actor.to(device), critic.to(device)
     
     eval_actor = copy.deepcopy(actor)
-    eval_actor = eval_actor.to("cpu")
+    eval_actor = eval_actor.to(device)
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_parallel_env(cfg.env.num_envs, "cpu"),
+        create_env_fn=make_parallel_env(cfg.env.num_envs, device),
         policy=actor,
+        
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
-        device="cpu",
-        storing_device="cpu",
+        device=device,
+        storing_device=device,
         max_frames_per_traj=-1,
     )
 
@@ -118,7 +118,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         )
 
     # Create test environment
-    test_env = make_parallel_env(1, device="cpu", is_test=True)
+    test_env = make_parallel_env(1, device="cuda", is_test=True)
     test_env.eval()
 
     # Main loop

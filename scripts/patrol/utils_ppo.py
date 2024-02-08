@@ -44,10 +44,11 @@ from torchrl.envs import ExplorationType, set_exploration_type
 from torchrl.data import BinaryDiscreteTensorSpec
 
 from envs.grid.patrol_env import PatrolEnv
+from envs.grid.patrol_env_gpu import PatrolEnvGpu
 
-def make_base_env(render_mode: str = None):
+def make_base_env(device: str, render_mode: str = None):
     env = PatrolEnv(render_mode)
-    env = GymWrapper(env, categorical_action_encoding=True)
+    env = GymWrapper(env, categorical_action_encoding=True, device=device)
     env.set_info_dict_reader(default_info_dict_reader(
         keys=["action_mask"],
         spec=[BinaryDiscreteTensorSpec(n=env.action_spec.space.n, dtype=torch.bool)]
@@ -67,7 +68,7 @@ def make_base_env(render_mode: str = None):
 def make_parallel_env(num_envs, device, is_test=False):
     env = ParallelEnv(
         num_envs,
-        EnvCreator(lambda: make_base_env()),
+        EnvCreator(lambda: make_base_env("cpu")),
         serial_for_single=True,
         device=device,
     )
@@ -199,8 +200,8 @@ def make_ppo_modules(proof_environment):
 
     return common_module, policy_module, value_module
 
-def make_ppo_models():
-    proof_environment = make_parallel_env(1, device="cpu")
+def make_ppo_models(device):
+    proof_environment = make_parallel_env(1, device=device)
 
     common_module, policy_module, value_module = make_ppo_modules(
         proof_environment
@@ -212,6 +213,8 @@ def make_ppo_models():
         policy_operator=policy_module,
         value_operator=value_module,
     )
+
+    actor_critic = actor_critic.to(device)
 
     with torch.no_grad():
         td = proof_environment.rollout(max_steps=100, break_when_any_done=False)
@@ -227,16 +230,17 @@ def make_ppo_models():
 
 def eval_model(actor, test_env, num_episodes=3):
     with set_exploration_type(ExplorationType.MODE):
-        test_rewards = []
-        for _ in range(num_episodes):
-            td_test = test_env.rollout(
-                policy=actor,
-                auto_reset=True,
-                auto_cast_to_device=False,
-                break_when_any_done=True,
-                max_steps=10_000_000,
-            )
-            reward = td_test["next", "episode_reward"][td_test["next", "done"]]
-            test_rewards.append(reward)
+#        test_rewards = []
+#        for _ in range(num_episodes):
+        td_test = test_env.rollout(
+            policy=actor,
+            auto_reset=True,
+            auto_cast_to_device=False,
+            break_when_any_done=True,
+            max_steps=10_000_000,
+        )
+        reward = torch.mean(td_test["next", "episode_reward"][td_test["next", "done"]])
+#        test_rewards.append(reward)
     del td_test
-    return torch.cat(test_rewards, 0).mean()
+    return reward
+#    return torch.cat(test_rewards, 0).mean()

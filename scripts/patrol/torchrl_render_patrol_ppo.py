@@ -37,8 +37,6 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 from envs.grid.patrol_env import PatrolEnv
 
-
-
 from utils_ppo import make_ppo_models, make_parallel_env, eval_model, make_base_env
 
 @hydra.main(config_path=".", config_name="config_ppo", version_base="1.1")
@@ -69,8 +67,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
         else:
             outputs_folder = "../../"
     
-    run_id = "2024-02-06/21-36-25/"
-    model_load_filename = "PPO_PPO_PatrolEnvGrid_6e2e7a3c_24_02_06-21_36_54_iter_174.pt"
+    run_id = "2024-02-07/14-10-19/"
+    model_load_filename = "PPO_PPO_PatrolEnvGrid_839ddaa8_24_02_07-14_10_48_iter_9999.pt"
     load_model_dir = outputs_folder + run_id + "saved_models/e2/"
 
     print('Loading model from ' + load_model_dir)
