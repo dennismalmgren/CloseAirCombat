@@ -37,7 +37,6 @@ from utils_ppo import make_ppo_models, make_parallel_env, eval_model
 @hydra.main(config_path=".", config_name="config_ppo", version_base="1.1")
 def main(cfg: "DictConfig"):  # noqa: F821
     device = "cpu" if not torch.cuda.device_count() else "cuda"
-
     frame_skip = 1
     total_frames = cfg.collector.total_frames // frame_skip
     frames_per_batch = cfg.collector.frames_per_batch // frame_skip

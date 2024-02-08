@@ -32,12 +32,18 @@ class PatrolEnv(gym.Env):
         self.dir: Dir = Dir.E
         self.loc_h: int = 0
         self.loc_w: int = 0
-        self.observation_mode = "plain"
+        self.prev_loc_h: int = 0
+        self.prev_loc_w: int = 0
+
+        self.loc_obs = np.zeros((self.height, self.width), dtype = np.float32)
+        self._update_loc_obs()
+
+        self.observation_mode = "pixels"
         if self.observation_mode == "pixels":
             #First we give the grid. This has intensity values.
             #Then we give our location. That has a direction value (0.25, 0.5, 0.75, 1.0)
             #Finally we give the reachability from our location. This is a distance value.
-            self.observation_space = spaces.Box(low=0, high=1.0, shape=(self.height, self.width, 3), dtype=np.uint8)
+            self.observation_space = spaces.Box(low=0, high=1.0, shape=(3, self.height, self.width), dtype=np.float32)
         else:
             self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(3 + self.height * self.width,))
         self.action_space = spaces.Discrete(3) #straight, turn left, turn right
@@ -74,6 +80,9 @@ class PatrolEnv(gym.Env):
         self._reset()    
         self.render_mode = render_mode
 
+    def _update_loc_obs(self):
+        self.loc_obs[self.prev_loc_h, self.prev_loc_w] = 0
+        self.loc_obs[self.loc_h, self.loc_w] = 1 / (self.dir.value + 1)
 
     def _calculate_dists(self):
         #dists are a matrix loc_h, loc_w, dir to loc_h, loc_w.
@@ -83,6 +92,8 @@ class PatrolEnv(gym.Env):
         self.dist_matrix = calc_distance_matrix(self.height, self.width)
 
         self.dist_matrix_no_dir = self.dist_matrix.min(-1)
+        self.dist_matrix_no_dir = self.dist_matrix_no_dir / np.max(np.nan_to_num(self.dist_matrix_no_dir))
+
 #        np.save("dist_matrix.npy", self.dist_matrix)
 #        np.save("dist_matrix_no_dir.npy", self.dist_matrix_no_dir)
 
@@ -92,9 +103,14 @@ class PatrolEnv(gym.Env):
     def _reset(self):
         self.loc_h = 0
         self.loc_w = 0
+        self.prev_loc_h = 0
+        self.prev_loc_w = 0
         self.dir = Dir.E
         self.expected_arrivals_grid = np.ones((self.height, self.width), dtype=np.float32) * 1 / 100.0 #uniform
         self.state_history = np.zeros((self.height, self.width), dtype=np.int32)
+        self.loc_obs = np.zeros((self.height, self.width), dtype = np.float32)
+        self._update_loc_obs()
+        self.loc_obs[self.loc_h, self.loc_w] = 1 / (self.dir.value + 1)
         self._update_state_history()
 
     def _calculate_reward(self):
@@ -124,11 +140,9 @@ class PatrolEnv(gym.Env):
 
     def _create_obs(self) -> ObsType:
         if self.observation_mode == "pixels":
-            returned_grid = np.copy(self.expected_arrivals_grid)
-            returned_loc = np.zeros((self.height, self.width), dtype = np.float32)
-            returned_loc[self.loc_h, self.loc_w] =  1 / (self.dir.value + 1)
-            returned_reach = self.dist_matrix_no_dir[self.loc_h, self.loc_w, self.dir.value] / np.max(np.nan_to_num(self.dist_matrix_no_dir))
-            obs = np.stack((returned_grid, returned_loc, returned_reach), axis = -1)
+            returned_grid = self.expected_arrivals_grid
+            returned_reach = self.dist_matrix_no_dir[self.loc_h, self.loc_w, self.dir.value]
+            obs = np.stack((self.expected_arrivals_grid, self.loc_obs, returned_reach), axis = 0)
             return obs
         else:
             returned_grid = np.copy(self.expected_arrivals_grid)
@@ -198,10 +212,14 @@ class PatrolEnv(gym.Env):
         if action_mask[action] == 0:
             raise Exception(f"Invalid action sent: {action}")
     
-        next_loc_h, next_loc_w, next_dir = self._move(action)    
+        next_loc_h, next_loc_w, next_dir = self._move(action)
+        self.prev_loc_h = self.loc_h
+        self.prev_loc_w = self.loc_w    
         self.loc_h = next_loc_h
         self.loc_w = next_loc_w    
         self.dir = next_dir
+        self._update_loc_obs()
+
         self._update_state_history()
         reward = self._calculate_reward()
         obs = self._create_obs()
@@ -220,3 +238,4 @@ class PatrolEnv(gym.Env):
     def close(self):
         # Clean up any resources used by the environment
         pass
+

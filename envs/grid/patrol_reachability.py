@@ -164,6 +164,6 @@ def calc_distance_matrix(start_height, start_width):
             distances = np.flip(distances, axis=0)
             distances = np.flip(distances, axis=3)
         elif start_dir == 3:
-            distances = np.rot90(distances, k = 3, axes=(1, 0))
+            distances = np.rot90(distances, k = 3, axes=(1, 0)) 
             distances = np.rot90(distances, k = 3, axes=(4, 3))
     return distances
