@@ -59,7 +59,7 @@ def make_base_env(device: str, render_mode: str = None):
                             ActionMask(),
                             RenameTransform(in_keys=["action_mask"], out_keys=["mask"], create_copy=True),
                             StepCounter(max_steps=1000),
-                            RewardScaling(loc=0, scale=0.001),
+                            RewardScaling(loc=0, scale=0.1),
                             RewardSum(),
                          ))
     return env
@@ -252,9 +252,9 @@ def eval_model(actor, test_env, num_episodes=3):
         td_test = test_env.rollout(
             policy=actor,
             auto_reset=True,
-            auto_cast_to_device=False,
+            auto_cast_to_device=True,
             break_when_any_done=True,
-            max_steps=10_000_000,
+            max_steps=1_000,
         )
         reward = torch.mean(td_test["next", "episode_reward"][td_test["next", "done"]])
 #        test_rewards.append(reward)

@@ -46,19 +46,29 @@ def main(cfg: "DictConfig"):  # noqa: F821
     # Create models (check utils_atari.py)
     actor, critic = make_ppo_models(device="cpu")
     actor, critic = actor.to(device), critic.to(device)
-    
-    eval_actor = copy.deepcopy(actor)
-    eval_actor = eval_actor.to("cpu")
+    # Create test environment
+    test_env = make_parallel_env(2, device="cpu", is_test=True)
+    #test_env.eval()
+    # td_test = test_env.rollout(
+    #         policy=actor,
+    #         auto_reset=True,
+    #         auto_cast_to_device=True,
+    #         break_when_any_done=True,
+    #         max_steps=1_000,
+    #     )
+    #eval_actor = copy.deepcopy(actor)
+    #eval_actor = eval_actor.to("cpu")
     # Create collector
     collector = SyncDataCollector(
         create_env_fn=make_parallel_env(cfg.env.num_envs, "cpu"),
         policy=actor,
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
-        device="cpu",
-        storing_device="cpu",
+        #device="cpu",
+        storing_device="cuda",
         max_frames_per_traj=-1,
     )
+
 
     # Create data buffer
     sampler = SamplerWithoutReplacement()
@@ -116,10 +126,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             },
         )
 
-    # Create test environment
-    test_env = make_parallel_env(1, device="cpu", is_test=True)
-    test_env.eval()
-
+    
     # Main loop
     collected_frames = 0
     num_network_updates = 0
@@ -183,7 +190,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         frames_in_batch = data.numel()
         collected_frames += frames_in_batch * frame_skip
         pbar.update(data.numel())
-
+        continue
         # Get training rewards and episode lengths
         episode_rewards = data["next", "episode_reward"][data["next", "done"]]
         if len(episode_rewards) > 0:
@@ -255,22 +262,23 @@ def main(cfg: "DictConfig"):  # noqa: F821
         if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
             i * frames_in_batch * frame_skip
         ) // test_interval:
-            eval_actor.eval()
-            actor_weights = TensorDict.from_module(actor, as_module=True)
-            eval_actor_weights = TensorDict.from_module(eval_actor, as_module=True)
-            eval_actor_weights.data.copy_(actor_weights.data)
+            actor.eval()
+            # #actor_weights = TensorDict.from_module(actor, as_module=True)
+            # #eval_actor_weights = TensorDict.from_module(eval_actor, as_module=True)
+            # #eval_actor_weights.data.copy_(actor_weights.data)
 
-            eval_start = time.time()
-            test_rewards = eval_model(
-                eval_actor, test_env, num_episodes=cfg_logger_num_test_episodes
-            )
-            eval_time = time.time() - eval_start
-            log_info.update(
-                {
-                    "eval/reward": test_rewards.mean(),
-                    "eval/time": eval_time,
-                }
-            ) 
+            # eval_start = time.time()
+            # test_rewards = eval_model(
+            #     actor, test_env, num_episodes=cfg_logger_num_test_episodes
+            # )
+            # eval_time = time.time() - eval_start
+            actor.train()
+            # log_info.update(
+            #     {
+            #         "eval/reward": test_rewards.mean(),
+            #         "eval/time": eval_time,
+            #     }
+            # ) 
 
         if logger:
             for key, value in log_info.items():
