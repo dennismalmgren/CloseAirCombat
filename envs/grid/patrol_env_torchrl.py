@@ -109,22 +109,22 @@ class PatrolEnv(EnvBase):
         self.top_bottom_masks[0, 3] = torch.tensor([1, 1, 0], dtype=torch.bool, device=self.device)
 
         #middle
-        self.top_bottom_masks[1, 2] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) #never gonna happen..
-        self.top_bottom_masks[1, 2] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) #never gonna happen..
-        self.top_bottom_masks[1, 2] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) #never gonna happen..
-        self.top_bottom_masks[1, 2] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) #never gonna happen..
+        self.top_bottom_masks[1, 2] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) 
+        self.top_bottom_masks[1, 2] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) 
+        self.top_bottom_masks[1, 2] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device)
+        self.top_bottom_masks[1, 2] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) 
 
         #bottom
-        self.top_bottom_masks[2, 0] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device)
-        self.top_bottom_masks[2, 1] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device)
-        self.top_bottom_masks[2, 2] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device)
-        self.top_bottom_masks[2, 3] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device)
+        self.top_bottom_masks[2, 0] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) #never gonna happen..
+        self.top_bottom_masks[2, 1] = torch.tensor([1, 1, 0], dtype=torch.bool, device=self.device)
+        self.top_bottom_masks[2, 2] = torch.tensor([0, 1, 1], dtype=torch.bool, device=self.device)
+        self.top_bottom_masks[2, 3] = torch.tensor([1, 0, 1], dtype=torch.bool, device=self.device)
 
         self.left_right_masks = torch.ones((3, 4, 3), dtype=torch.bool, device=self.device)
         #left
         self.left_right_masks[0, 0] = torch.tensor([1, 0, 1], dtype=torch.bool, device=self.device)
-        self.left_right_masks[0, 1] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device)
-        self.left_right_masks[0, 2] = torch.tensor([1, 1, 0], dtype=torch.bool, device=self.device) #never gonna happen..
+        self.left_right_masks[0, 1] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) #never gonna happen..
+        self.left_right_masks[0, 2] = torch.tensor([1, 1, 0], dtype=torch.bool, device=self.device) 
         self.left_right_masks[0, 3] = torch.tensor([0, 1, 1], dtype=torch.bool, device=self.device)
         #middle
         self.left_right_masks[1, 1] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device)
@@ -134,8 +134,8 @@ class PatrolEnv(EnvBase):
         #right
         self.left_right_masks[2, 0] = torch.tensor([1, 1, 0], dtype=torch.bool, device=self.device)
         self.left_right_masks[2, 1] = torch.tensor([0, 1, 1], dtype=torch.bool, device=self.device)
-        self.left_right_masks[2, 2] = torch.tensor([1, 0, 1], dtype=torch.bool, device=self.device) #never gonna happen..
-        self.left_right_masks[2, 3] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device)
+        self.left_right_masks[2, 2] = torch.tensor([1, 0, 1], dtype=torch.bool, device=self.device) 
+        self.left_right_masks[2, 3] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) #never gonna happen..
   
     def _calculate_dists(self):
         #dists are a matrix loc_h, loc_w, dir to loc_h, loc_w.
@@ -149,13 +149,14 @@ class PatrolEnv(EnvBase):
     def _make_action_mask(self):
         top_bottom_indices = torch.ones(self.batch_size, dtype=torch.int32, device=self.device) 
         top_bottom_indices[self.agent_loc[..., -2] == 0] = 0
-        top_bottom_indices[self.agent_loc[..., -2] == self.height - 1] = 1
+        top_bottom_indices[self.agent_loc[..., -2] == self.height - 1] = 2
 
         left_right_indices = torch.ones(self.batch_size, dtype=torch.int32, device=self.device) 
         left_right_indices[self.agent_loc[..., -1] == 0] = 0
-        left_right_indices[self.agent_loc[..., -1] == self.width - 1] = 1
-
+        left_right_indices[self.agent_loc[..., -1] == self.width - 1] = 2
+        
         #won't work with batching
+        self.action_mask[:] = 1
         self.action_mask &= self.top_bottom_masks[top_bottom_indices, self.agent_dir.squeeze()]
         self.action_mask &= self.left_right_masks[left_right_indices, self.agent_dir.squeeze()]
 
@@ -300,7 +301,7 @@ class PatrolEnv(EnvBase):
         next_dir = self.turn_options[action_move_index]
         self.agent_loc = next_loc
         self.agent_dir = next_dir
-
+  
         #Create observations
         scaled_loc = self.agent_loc * self.loc_scale
         scaled_dir = self.agent_dir * self.dir_scale
@@ -318,7 +319,7 @@ class PatrolEnv(EnvBase):
         #this next does not work batched.
         reward = self.dist_matrix_no_dir[h_indices, w_indices, d_indices, self.hh, self.ww] * self.expected_arrivals_grid
         reward = torch.sum(reward, dim=-1)
-        reward = torch.sum(reward, dim=-1, keepdim=True)
+        reward = -torch.sum(reward, dim=-1, keepdim=True)
         
         terminated = torch.zeros((*self.batch_size, 1), dtype=torch.bool, device = self.device)
         done = torch.zeros((*self.batch_size, 1), dtype=torch.bool, device = self.device)

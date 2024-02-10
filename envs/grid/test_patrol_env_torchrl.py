@@ -20,7 +20,7 @@ def main():
     env = PatrolEnv(device="cuda")
     check_env_specs(env)
 
-    print("Testing batched env, cuda")   
+    print("Testing batched env, cuda")    
     batch_size = 2
     env = PatrolEnv(device="cuda", batch_size=[batch_size])
     check_env_specs(env)

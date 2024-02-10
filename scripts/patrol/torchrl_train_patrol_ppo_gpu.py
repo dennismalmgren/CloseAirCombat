@@ -26,14 +26,14 @@ from tensordict import TensorDict
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value.advantages import GAE
+from torchrl.envs import ExplorationType, set_exploration_type
 
-from envs.grid.patrol_env import PatrolEnv
-from envs.grid.patrol_env_gpu import PatrolEnvGpu
+from envs.grid.patrol_env_torchrl import PatrolEnv
 
 
-from utils_ppo import make_ppo_models, make_parallel_env, eval_model
+from utils_ppo_gpu import make_ppo_models, make_parallel_env, eval_model
 
-@hydra.main(config_path=".", config_name="config_ppo", version_base="1.1")
+@hydra.main(config_path=".", config_name="config_ppo_gpu", version_base="1.1")
 def main(cfg: "DictConfig"):  # noqa: F821
     device = "cpu" if not torch.cuda.device_count() else "cuda"
 
@@ -44,21 +44,21 @@ def main(cfg: "DictConfig"):  # noqa: F821
     test_interval = cfg.logger.test_interval // frame_skip
     
     # Create models (check utils_atari.py)
-    actor, critic = make_ppo_models()
+    actor, critic = make_ppo_models(device)
     actor, critic = actor.to(device), critic.to(device)
     
-    eval_actor = copy.deepcopy(actor)
-    eval_actor = eval_actor.to(device)
+    #eval_actor = copy.deepcopy(actor)
+    #eval_actor = eval_actor.to(device)
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_parallel_env(cfg.env.num_envs, device),
+        create_env_fn=make_parallel_env(num_parallel = cfg.env.num_envs, device=device),
         policy=actor,
-        
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
         device=device,
         storing_device=device,
         max_frames_per_traj=-1,
+        exploration_type=ExplorationType.RANDOM,
     )
 
     # Create data buffer
@@ -86,19 +86,11 @@ def main(cfg: "DictConfig"):  # noqa: F821
         normalize_advantage=True,
     )
 
-    # Create optimizer
-    # optim = torch.optim.Adam(
-    #     loss_module.parameters(),
-    #     lr=cfg.optim.lr,
-    #     weight_decay=cfg.optim.weight_decay,
-    #     eps=cfg.optim.eps,
-    # ) 
-
     optim = torch.optim.AdamW(
         loss_module.parameters(),
         lr=cfg.optim.lr,
-       # weight_decay=cfg.optim.weight_decay,
-       # eps=cfg.optim.eps,
+        weight_decay=cfg.optim.weight_decay,
+        eps=cfg.optim.eps,
     ) 
 
     # Create logger
@@ -118,7 +110,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         )
 
     # Create test environment
-    test_env = make_parallel_env(1, device="cuda", is_test=True)
+    test_env = make_parallel_env(1, device=device)
     test_env.eval()
 
     # Main loop
@@ -140,7 +132,6 @@ def main(cfg: "DictConfig"):  # noqa: F821
     cfg_loss_clip_epsilon = cfg.loss.clip_epsilon
     cfg_logger_num_test_episodes = cfg.logger.num_test_episodes
     cfg_optim_max_grad_norm = cfg.optim.max_grad_norm
-    cfg.loss.clip_epsilon = cfg_loss_clip_epsilon
     cfg_pretrain_save_interval = cfg.model_save.save_interval
     cfg_model_save_experiment = cfg.model_save.experiment_name
     model_name = f"{exp_name}"
@@ -179,6 +170,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     sampling_start = time.time()
 
     for i, data in enumerate(collector):
+        #data = data.reshape((-1))
         log_info = {}
         sampling_time = time.time() - sampling_start
         frames_in_batch = data.numel()
@@ -256,14 +248,14 @@ def main(cfg: "DictConfig"):  # noqa: F821
         if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
             i * frames_in_batch * frame_skip
         ) // test_interval:
-            eval_actor.eval()
-            actor_weights = TensorDict.from_module(actor, as_module=True)
-            eval_actor_weights = TensorDict.from_module(eval_actor, as_module=True)
-            eval_actor_weights.data.copy_(actor_weights.data)
+            actor.eval()
+            # actor_weights = TensorDict.from_module(actor, as_module=True)
+            # eval_actor_weights = TensorDict.from_module(eval_actor, as_module=True)
+            # eval_actor_weights.data.copy_(actor_weights.data)
 
             eval_start = time.time()
             test_rewards = eval_model(
-                eval_actor, test_env, num_episodes=cfg_logger_num_test_episodes
+                actor, test_env, num_episodes=cfg_logger_num_test_episodes
             )
             eval_time = time.time() - eval_start
             log_info.update(
