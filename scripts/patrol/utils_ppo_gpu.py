@@ -45,11 +45,11 @@ from torchrl.data import BinaryDiscreteTensorSpec
 
 from envs.grid.patrol_env_torchrl import PatrolEnv
 
-def make_base_env(device: str, num_envs: int):
+def make_base_env(num_envs: int, device: str, render_mode: str):
     if num_envs > 1:
-        env = PatrolEnv(device = device, batch_size=[num_envs])
+        env = PatrolEnv(device = device, render_mode = render_mode, batch_size=[num_envs])
     else:
-        env = PatrolEnv(device = device)
+        env = PatrolEnv(device = device, render_mode = render_mode)
 
     env = TransformedEnv(env,
                          Compose(
@@ -62,8 +62,8 @@ def make_base_env(device: str, num_envs: int):
     return env
 
 #start with a baseline
-def make_parallel_env(num_parallel = 1, device: str = "cpu"):
-    return make_base_env(device, num_parallel)
+def make_parallel_env(num_parallel = 1, device: str = "cpu", render_mode=None):
+    return make_base_env(num_parallel, device, render_mode)
     # #Not sure you can also vectorize. We'll see.
     # env = ParallelEnv(
     #     num_parallel,

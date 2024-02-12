@@ -39,6 +39,7 @@ class PatrolEnv(EnvBase):
 
     def __init__(self, 
             *,
+            render_mode: Optional[str] = None,
             device: DEVICE_TYPING = None,
             batch_size: Optional[torch.Size] = None,
             seed = None
@@ -50,7 +51,7 @@ class PatrolEnv(EnvBase):
         self.loc_scale = torch.tensor([1 / self.height, 1 / self.width], device=self.device)
         self.dir_scale = torch.tensor(1 / 4, device=self.device)
         self.size: torch.Tensor = self.width * self.height
-        
+        self.render_mode = render_mode
         self.is_batched = (self.batch_size is not None and len(self.batch_size) > 0)
 
 
@@ -87,6 +88,7 @@ class PatrolEnv(EnvBase):
         self.agent_dir = torch.ones((*self.batch_size, 1), dtype=torch.int32, device=self.device)
         self.action_mask = torch.ones((*self.batch_size, 3), dtype=torch.bool, device=self.device)
         self.expected_arrivals_grid = torch.ones((*self.batch_size, self.height, self.width), dtype=torch.float32) * 1 / 100.0 #uniform
+        self.birth_rate_grid = torch.zeros((*self.batch_size, self.height, self.width), dtype=torch.float32, device = self.device) #start with zero..
         hh, ww = torch.meshgrid(torch.arange(self.height, device = self.device), torch.arange(self.width, device = self.device), indexing='ij')
         self.hh = hh
         self.ww = ww
@@ -94,6 +96,9 @@ class PatrolEnv(EnvBase):
         self._calculate_dists()
         self._make_specs()
         self._make_action_mask()
+        if self.render_mode == "rgb_array":
+            self.state_history = torch.zeros((self.height, self.width), dtype=torch.int32, device = self.device)
+
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self._set_seed(seed)
@@ -163,6 +168,10 @@ class PatrolEnv(EnvBase):
     def _make_specs(self):
         self.observation_spec = CompositeSpec(
             observation = BoundedTensorSpec(
+                #loc, dir, expected arrivals, birth rates.
+                #then we need sensor coverage.
+                #start with 'searching only'
+                #maybe we need multiple tasks eventually.
                 shape=(*self.batch_size, 3 + self.height * self.width,),
                 low = 0.0,
                 high = 1.0,
@@ -176,7 +185,37 @@ class PatrolEnv(EnvBase):
             ),
             shape=self.batch_size
         )
-    
+        if self.render_mode == "":
+            self.observation_spec.set("expected_arrivals_grid", 
+                                      UnboundedContinuousTensorSpec(
+                                            shape=(*self.batch_size, self.height, self.width,),
+                                            dtype=torch.float32
+                                      ))
+            
+            self.observation_spec.set("agent_loc",
+                                      UnboundedContinuousTensorSpec(
+                                            shape=(*self.batch_size, 2,),
+                                            dtype=torch.float32
+                                      ))
+            
+            self.observation_spec.set("agent_dir",
+                                      UnboundedContinuousTensorSpec(
+                                            shape=(*self.batch_size, 1,),
+                                            dtype=torch.float32
+                                      ))
+            
+            self.observation_spec.set("state_history",
+                                        UnboundedContinuousTensorSpec(
+                                            shape=(*self.batch_size, self.height, self.width,),
+                                            dtype=torch.float32
+                                        ))
+            
+            self.observation_spec.set("birth_rate_grid", 
+                            UnboundedContinuousTensorSpec(
+                                shape=(*self.batch_size, self.height, self.width,),
+                                dtype=torch.float32
+                            ))
+
         #maybe use one-hot.
         self.action_spec = OneHotDiscreteTensorSpec(
             n = 3,
@@ -230,7 +269,8 @@ class PatrolEnv(EnvBase):
         self._make_action_mask()
 
         self.action_spec.update_mask(self.action_mask)
-
+        if self.render_mode == "rgb_array":
+            self.state_history = torch.zeros((self.height, self.width), dtype=torch.int32, device = self.device)
         out = TensorDict(
             {
                 "observation": observation,
@@ -242,54 +282,18 @@ class PatrolEnv(EnvBase):
             batch_size=self.batch_size,
             device = self.device
         )
+        if self.render_mode == "rgb_array":
+            self._update_state_history()
+            self._render(out)
         return out
     
-
-    # def _action_mask_for(self, loc_h: int, loc_w: int, dir: Dir) -> np.ndarray:
-    #     action_mask = np.ones(3, dtype=np.bool_)
-    #     # Define a dictionary to map direction and position to action mask indices
-    #     dir_mask_map_h = {
-    #         (Dir.N, 'top'):    [0],
-    #         (Dir.E, 'top'):    [1],
-    #         (Dir.W, 'top'):    [2],
-    #         (Dir.S, 'bottom'): [0],
-    #         (Dir.E, 'bottom'): [2],
-    #         (Dir.W, 'bottom'): [1],
-    #     }
-
-    #     dir_mask_map_w = {
-    #         (Dir.N, 'left'):   [1],
-    #         (Dir.S, 'left'):   [2],
-    #         (Dir.W, 'left'):   [0],
-    #         (Dir.N, 'right'):  [2],
-    #         (Dir.S, 'right'):  [1],
-    #         (Dir.E, 'right'):  [0]
-    #     }
-    #     # Determine position (top, bottom, left, right)
-    #     h_position = None
-    #     w_position = None
-    #     if loc_h == 0:
-    #         h_position = 'top'
-    #     elif loc_h == self.height - 1:
-    #         h_position = 'bottom'
-    #     if loc_w == 0:
-    #         w_position = 'left'
-    #     elif loc_w == self.width - 1:
-    #         w_position = 'right'
-
-    #     # Set action mask based on direction and position
-    #     if h_position:
-    #         indices = dir_mask_map_h.get((dir, h_position), [])
-    #         for index in indices:
-    #             action_mask[index] = 0
-    #     if w_position:
-    #         indices = dir_mask_map_w.get((dir, w_position), [])
-    #         for index in indices:
-    #             action_mask[index] = 0
-    #     return action_mask
-
-    # def _action_mask(self):
-    #     return self._action_mask_for(self.loc_h, self.loc_w, self.dir)
+    def _render(self, tensordict: TensorDict):
+        tensordict['expected_arrivals_grid'] = self.expected_arrivals_grid
+        tensordict['agent_loc'] = self.agent_loc
+        tensordict['agent_dir'] = self.agent_dir
+        tensordict['state_history'] = self.state_history
+        tensordict['birth_rate_grid'] = self.birth_rate_grid
+        return tensordict
     
     #use non-static version
     def _step(self, tensordict: TensorDict) -> TensorDict:
@@ -339,11 +343,14 @@ class PatrolEnv(EnvBase):
             tensordict.shape,
             device = self.device
         )
+        if self.render_mode == "rgb_array":
+            self._update_state_history()
+            self._render(out)
         return out
 
-    def render(self, mode='rgb_array'):
-        return (np.copy(self.expected_arrivals_grid), np.copy(self.state_history), (self.loc_h, self.loc_w))
-    
+    def _update_state_history(self):
+        self.state_history[self.agent_loc[..., 0], self.agent_loc[..., 1]] += 1
+
     def close(self):
         # Clean up any resources used by the environment
         pass

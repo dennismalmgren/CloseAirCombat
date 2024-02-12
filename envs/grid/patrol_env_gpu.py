@@ -28,8 +28,8 @@ class PatrolEnvGpu(gym.Env):
     def __init__(self, 
                  render_mode: Optional[str] = None):
         self.device = "cuda"
-        self.width = torch.tensor(100, device=self.device)
-        self.height = torch.tensor(50, device=self.device)
+        self.width = torch.tensor(40, device=self.device)
+        self.height = torch.tensor(20, device=self.device)
         self.size = self.width * self.height
         self.dir = torch.tensor(1, device=self.device)
         self.loc_h = torch.tensor(0, device=self.device)

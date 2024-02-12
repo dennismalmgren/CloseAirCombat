@@ -16,7 +16,7 @@ from torchrl.envs import (
 
 from torchrl.collectors import RandomPolicy, SyncDataCollector
 from tensordict.nn import TensorDictSequential
-from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
+from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer, LazyTensorStorage
 from torchrl.objectives import DQNLoss, HardUpdate
 from torchrl.record.loggers import generate_exp_name, get_logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
@@ -64,7 +64,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     # Create data buffer
     sampler = SamplerWithoutReplacement()
     data_buffer = TensorDictReplayBuffer(
-        storage=LazyMemmapStorage(frames_per_batch),
+        storage=LazyTensorStorage(frames_per_batch, device=device),
         sampler=sampler,
         batch_size=mini_batch_size,
     )
@@ -122,7 +122,6 @@ def main(cfg: "DictConfig"):  # noqa: F821
     total_network_updates = (
         (total_frames // frames_per_batch) * cfg.loss.ppo_epochs * num_mini_batches
     )
-
 
     # extract cfg variables
     cfg_loss_ppo_epochs = cfg.loss.ppo_epochs
@@ -191,28 +190,29 @@ def main(cfg: "DictConfig"):  # noqa: F821
 
         training_start = time.time()
         for j in range(cfg_loss_ppo_epochs):
-
             # Compute GAE
             with torch.no_grad():
                 data = adv_module(data.to(device, non_blocking=True))
             data_reshape = data.reshape(-1)
             # Update the data buffer
-            data_buffer.extend(data_reshape)
-
-            for k, batch in enumerate(data_buffer):
-                # Linearly decrease the learning rate and clip epsilon
+            #data_buffer.extend(data_reshape)
+            for batch_id in range(num_mini_batches):
+                k = batch_id
+                batch = data_reshape[batch_id * mini_batch_size : (batch_id + 1) * mini_batch_size]
+        #    for k, batch in enumerate(data_buffer):
+        #         # Linearly decrease the learning rate and clip epsilon
                 alpha = 1.0
                 if cfg_optim_anneal_lr:
-                    alpha = 1 - (num_network_updates / total_network_updates)
+                    alpha = 1 - (num_network_updates / (2 * total_network_updates))
                     for group in optim.param_groups:
                         group["lr"] = cfg_optim_lr * alpha
                 if cfg_loss_anneal_clip_eps:
                     loss_module.clip_epsilon.copy_(cfg_loss_clip_epsilon * alpha)
                 num_network_updates += 1
-                # Get a data batch
-                batch = batch.to(device, non_blocking=True)
+        #         # Get a data batch
+        #         batch = batch.to(device, non_blocking=True)
 
-                # Forward pass PPO loss
+                 # Forward pass PPO loss
                 loss = loss_module(batch)
                 losses[j, k] = loss.select(
                     "loss_critic", "loss_entropy", "loss_objective"
@@ -258,6 +258,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 actor, test_env, num_episodes=cfg_logger_num_test_episodes
             )
             eval_time = time.time() - eval_start
+            actor.train()
             log_info.update(
                 {
                     "eval/reward": test_rewards.mean(),
@@ -286,6 +287,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             torch.save(savestate, save_model_dir + f"/{model_name}_iter_{i}.pt")
 
     collector.shutdown()
+    torch.save(savestate, save_model_dir + f"/{model_name}_iter_final.pt")
     end_time = time.time()
     execution_time = end_time - start_time
     logger.info(f"Training took {execution_time:.2f} seconds to finish")
