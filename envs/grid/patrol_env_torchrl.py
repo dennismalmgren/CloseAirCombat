@@ -350,19 +350,8 @@ class PatrolEnv(EnvBase):
 
     #separate into predict/update
     def _update_expected_arrivals(self):
-        #self.expected_arrivals_grid = self.expected_arrivals_grid.to(dtype=torch.float32)
-        #self.pd = self.pd.to(dtype=torch.float32)
-        if self.expected_arrivals_grid.dtype != self.birth_rate_grid.dtype:
-            print('invalid types')
         self.expected_arrivals_grid = self.expected_arrivals_grid * self.ps + self.birth_rate_grid 
-        if self.expected_arrivals_grid.shape != self.sensor_coverage.shape:
-            print('invalid shapes')
-        if self.pd.dtype != torch.float32:
-            print('invalid pd')
-        if self.expected_arrivals_grid.dtype != torch.float32:
-            print('invalid expected_arrivals_grid')
-        if self.sensor_coverage.dtype != torch.bool:
-            print('invalid sensor_coverage')
+
         self.expected_arrivals_grid[self.sensor_coverage] *= (1 - self.pd)
 
     def _reset(self, tensordict: TensorDict) -> TensorDict:
@@ -410,7 +399,7 @@ class PatrolEnv(EnvBase):
         tensordict['state_history'] = self.state_history
         tensordict['birth_rate_grid'] = self.birth_rate_grid
         tensordict['task_area'] = self.task_area
-        tensordict['sensor_coverage'] = self.sensor_coverage_render
+        tensordict['sensor_coverage'] = self.sensor_coverage
         return tensordict
     
     def _calculate_reward(self):

@@ -1,3 +1,4 @@
+torchrl-nightly
 torch==2.1.0
 #torchrl, tensordict from source
 pymap3d==3.0.1

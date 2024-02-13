@@ -68,8 +68,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
         else:
             outputs_folder = "../../"
     
-    run_id = "2024-02-13/08-25-54/"
-    model_load_filename = "PPO_PPO_PatrolEnvGrid_83ae5e37_24_02_13-08_25_56_iter_final.pt"
+    run_id = "2024-02-13/16-10-53/"
+    model_load_filename = "PPO_PPO_PatrolEnvGrid_20743568_24_02_13-16_10_54_iter_final.pt"
     load_model_dir = outputs_folder + run_id + "saved_models/e3/"
 
     print('Loading model from ' + load_model_dir)

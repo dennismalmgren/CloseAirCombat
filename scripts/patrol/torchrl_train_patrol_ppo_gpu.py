@@ -135,7 +135,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     cfg_model_save_experiment = cfg.model_save.experiment_name
     model_name = f"{exp_name}"
     
-    load_model = False
+    load_model = True
     run_as_debug = False
     load_from_debug = False
     #debug outputs is at the root.
@@ -152,9 +152,9 @@ def main(cfg: "DictConfig"):  # noqa: F821
             else:
                 outputs_folder = "../../"
         
-        run_id = "2024-02-07/07-11-16/"
-        model_load_filename = "PPO_PPO_PatrolEnvGrid_10e424dc_24_02_07-07_11_44_iter_9999.pt"
-        load_model_dir = outputs_folder + run_id + "saved_models/e2/"
+        run_id = "2024-02-13/16-10-53/"
+        model_load_filename = "PPO_PPO_PatrolEnvGrid_20743568_24_02_13-16_10_54_iter_final.pt"
+        load_model_dir = outputs_folder + run_id + "saved_models/e3/"
         print('Loading model from ' + load_model_dir)
         loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
         actor_state = loaded_state['actor']

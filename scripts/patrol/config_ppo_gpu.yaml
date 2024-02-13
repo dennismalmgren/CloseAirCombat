@@ -35,7 +35,7 @@ loss:
   clip_epsilon: 0.2
   anneal_clip_epsilon: False
   critic_coef: 1.0
-  entropy_coef: 0.02
+  entropy_coef: 0.01
   loss_critic_type: l2
 
 model_save:
