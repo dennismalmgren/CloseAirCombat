@@ -87,7 +87,6 @@ class PatrolEnv(EnvBase):
 
         self.agent_loc = torch.zeros((*self.batch_size, 2), dtype=torch.int32, device=self.device)
         self.agent_dir = torch.ones((*self.batch_size, 1), dtype=torch.int32, device=self.device)
-        self.agent_loc_dir_grid = torch.zeros((*self.batch_size, self.height, self.width), dtype=torch.float32, device = self.device)
         self.action_mask = torch.ones((*self.batch_size, 3), dtype=torch.bool, device=self.device)
         self.h_indices = torch.arange(self.height, device = self.device)
         self.w_indices = torch.arange(self.width, device = self.device)
@@ -199,20 +198,9 @@ class PatrolEnv(EnvBase):
 
     def _make_specs(self):
         self.observation_spec = CompositeSpec(
-            #pixels include the following layers:
-            #* location/direction/coverage grid
-            #* expected arrivals grid
-            #* task area mask grid
-            #* birth rates grid
-            pixels = BoundedTensorSpec(
-                shape=(*self.batch_size, 4, self.height,  self.width,),
-                low = 0,
-                high = 1,
-                dtype=torch.float32
-            ),
             observation = BoundedTensorSpec(
-                #loc (2), dir (1), ps (1), pd (1), birth rates (HXW)
-                shape=(*self.batch_size, 2 + 1 + 1 + 1),
+                #loc (2), dir (1), ps (1), pd (1), expected arrivals (HXW), birth rates (HXW), task area (HXW), sensor coverage (HXW)
+                shape=(*self.batch_size, 2 + 1 + 1 + 1 + 4 * self.height * self.width,),
                 low = 0.0,
                 high = 1.0,
                 dtype=torch.float32
@@ -304,31 +292,18 @@ class PatrolEnv(EnvBase):
         rng = torch.manual_seed(seed)
         self.rng = rng
 
-    def _create_observation(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """ Returns
-            expected_arrivals,
-            sensor_coverage,
-            observation
-        """
+    def _create_observation(self):
         #loc (2), dir (1), ps (1), pd (1), expected arrivals (HXW), birth rates (HXW), task area (HXW), sensor coverage (HXW)
         #todo: data types.
         scaled_loc = self.agent_loc * self.loc_scale
         scaled_dir = self.agent_dir * self.dir_scale
-        #pixels include the following layers:
-        #* location/direction/coverage grid
-        #* expected arrivals grid
-        #* task area mask grid
-        #* birth rates grid
-        pixels = torch.stack((self.agent_loc_dir_coverage_grid,
-                              self.expected_arrivals_grid,
-                              self.task_area,
-                              self.birth_rate_grid), dim = -3)
-        
-        observation = torch.cat((scaled_loc, scaled_dir, 
-                                 self.ps.expand_as(self.agent_dir), 
-                                 self.pd.expand_as(self.agent_dir), 
+        observation = torch.cat((scaled_loc, scaled_dir, self.ps.expand_as(self.agent_dir), self.pd.expand_as(self.agent_dir), 
+                                 self.expected_arrivals_grid.reshape(*self.batch_size, -1),
+                                 self.birth_rate_grid.reshape(*self.batch_size, -1),
+                                 self.task_area.reshape(*self.batch_size, -1),
+                                 self.sensor_coverage.reshape(*self.batch_size, -1)
                                  ), dim=-1)
-        return pixels, observation
+        return observation
     
     def _make_sensor_coverage(self):
         sensor_area_coverage_h = self.agent_loc[..., 0:1] + self.sensor_area_h[self.agent_dir.squeeze()] #these can probably be merged.
@@ -339,30 +314,12 @@ class PatrolEnv(EnvBase):
         sensor_coverage_mask = mask_h & mask_w
         self.sensor_coverage = sensor_coverage_mask & self.task_area #we can only cover our own turf.
         self.sensor_coverage = self.sensor_coverage.reshape((*self.batch_size, self.height, self.width))
-        #self.agent_loc_dir_coverage_grid = self.sensor_coverage
-        self.agent_loc_dir_coverage_grid = sensor_coverage_mask.clone().reshape((*self.batch_size, self.height, self.width)).float()
-        if len(self.batch_size) > 0:
-            batch_indices = torch.arange(self.batch_size[0], device=self.device)
-            self.agent_loc_dir_coverage_grid[batch_indices, self.agent_loc[..., 0], self.agent_loc[..., 1]] = 0.5 * (1 + self.agent_dir.squeeze()) / 4
-        else:
-            self.agent_loc_dir_coverage_grid[self.agent_loc[..., 0], self.agent_loc[..., 1]] = 0.5 * (1 + self.agent_dir) / 4
-
+        if self.render_mode == "rgb_array":
+            self.sensor_coverage_render = sensor_coverage_mask.reshape((*self.batch_size, self.height, self.width))
 
     #separate into predict/update
     def _update_expected_arrivals(self):
-        #self.expected_arrivals_grid = self.expected_arrivals_grid.to(dtype=torch.float32)
-        #self.pd = self.pd.to(dtype=torch.float32)
-        if self.expected_arrivals_grid.dtype != self.birth_rate_grid.dtype:
-            print('invalid types')
         self.expected_arrivals_grid = self.expected_arrivals_grid * self.ps + self.birth_rate_grid 
-        if self.expected_arrivals_grid.shape != self.sensor_coverage.shape:
-            print('invalid shapes')
-        if self.pd.dtype != torch.float32:
-            print('invalid pd')
-        if self.expected_arrivals_grid.dtype != torch.float32:
-            print('invalid expected_arrivals_grid')
-        if self.sensor_coverage.dtype != torch.bool:
-            print('invalid sensor_coverage')
         self.expected_arrivals_grid[self.sensor_coverage] *= (1 - self.pd)
 
     def _reset(self, tensordict: TensorDict) -> TensorDict:
@@ -376,7 +333,7 @@ class PatrolEnv(EnvBase):
 
         self._update_expected_arrivals()
 
-        pixels, observation = self._create_observation()
+        observation = self._create_observation()
         terminated = torch.zeros((*self.batch_size, 1), dtype=torch.bool, device = self.device)
         done = torch.zeros((*self.batch_size, 1), dtype=torch.bool, device = self.device)
         truncated = torch.zeros((*self.batch_size, 1), dtype=torch.bool, device = self.device)
@@ -387,7 +344,6 @@ class PatrolEnv(EnvBase):
             self.state_history = torch.zeros((self.height, self.width), dtype=torch.int32, device = self.device)
         out = TensorDict(
             {
-                "pixels": pixels,
                 "observation": observation,
                 "terminated": terminated,
                 "done": done,
@@ -416,7 +372,7 @@ class PatrolEnv(EnvBase):
     def _calculate_reward(self):
         #reward is at most 1.
         return -torch.sum(torch.sum(self.expected_arrivals_grid * self.task_area * self.expected_arrivals_scale, dim = -1), dim = -1, keepdim=True)
-
+    
     #use non-static version
     def _step(self, tensordict: TensorDict) -> TensorDict:
         action = tensordict["action"]
@@ -431,17 +387,17 @@ class PatrolEnv(EnvBase):
         self._make_sensor_coverage()
         self._update_expected_arrivals()
         #Create observations
-        pixels, observation = self._create_observation()
+        observation = self._create_observation()
 
-#        loc_dir = torch.cat((next_loc, next_dir), dim = -1)          
-        # if self.batch_size is not None and len(self.batch_size) > 0:  
-        #     h_indices = loc_dir[:, 0][:, None, None]  # Shape: (B, 1, 1)
-        #     w_indices = loc_dir[:, 1][:, None, None]  # Shape: (B, 1, 1)
-        #     d_indices = loc_dir[:, 2][:, None, None]  # Shape: (B, 1, 1)
-        # else:
-        #     h_indices = loc_dir[0]
-        #     w_indices = loc_dir[1]
-        #     d_indices = loc_dir[2]
+        loc_dir = torch.cat((next_loc, next_dir), dim = -1)          
+        if self.batch_size is not None and len(self.batch_size) > 0:  
+            h_indices = loc_dir[:, 0][:, None, None]  # Shape: (B, 1, 1)
+            w_indices = loc_dir[:, 1][:, None, None]  # Shape: (B, 1, 1)
+            d_indices = loc_dir[:, 2][:, None, None]  # Shape: (B, 1, 1)
+        else:
+            h_indices = loc_dir[0]
+            w_indices = loc_dir[1]
+            d_indices = loc_dir[2]
         reward = self._calculate_reward()
         
         terminated = torch.zeros((*self.batch_size, 1), dtype=torch.bool, device = self.device)
@@ -452,7 +408,6 @@ class PatrolEnv(EnvBase):
 
         out = TensorDict(
             {
-                "pixels": pixels,
                 "observation": observation,
                 "action_mask": self.action_mask,
                 "reward": reward,

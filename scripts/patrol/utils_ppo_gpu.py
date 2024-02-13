@@ -83,30 +83,18 @@ def make_parallel_env(num_parallel = 1, device: str = "cpu", render_mode=None):
 
 class CommonModule(nn.Module):
     def __init__(self, 
-                 input_shape_expected_arrivals, 
-                 input_shape_sensor_coverage,
+                 input_shape_pixels, 
                  input_shape_observation):
         super().__init__()
-        self.input_shape_expected_arrivals = input_shape_expected_arrivals
-        self.input_shape_sensor_coverage = input_shape_sensor_coverage
+        self.input_shape_pixels = input_shape_pixels
         self.input_shape_observation = input_shape_observation
-
-        self.expected_arrivals_mlp = MLP(
-            in_features=self.input_shape_expected_arrivals[-1],
-            #in_features=common_cnn_output.shape[-1],
+        
+        self.pixels_cnn = ConvNet(
+           # in_features= self.input_shape_pixels,
             activation_class=torch.nn.ELU,
-            activate_last_layer=True,
-            out_features=512,
-            num_cells=[],
-        )
-
-        self.sensor_coverage_mlp = MLP(
-            in_features=self.input_shape_sensor_coverage[-1],
-            #in_features=common_cnn_output.shape[-1],
-            activation_class=torch.nn.ELU,
-            activate_last_layer=True,
-            out_features=512,
-            num_cells=[],
+            num_cells=[32, 32, 32],
+            kernel_sizes=[3, 3, 3],
+            strides=[1, 1, 1],
         )
 
         self.observation_mlp = MLP(
@@ -117,18 +105,15 @@ class CommonModule(nn.Module):
             num_cells=[],
         )
         
-        expected_arrivals_input = torch.ones(input_shape_expected_arrivals)
-        sensor_coverage_input = torch.ones(input_shape_sensor_coverage)
+        pixels_input = torch.ones(input_shape_pixels)
         observation_input = torch.ones(input_shape_observation)
-        expected_arrivals_output = self.expected_arrivals_mlp(expected_arrivals_input)
-        sensor_coverage_output = self.sensor_coverage_mlp(sensor_coverage_input)
+        pixels_output = self.pixels_cnn(pixels_input)
         observation_mlp_output = self.observation_mlp(observation_input)
 
         common_mlp_input = torch.cat(
             [
-                expected_arrivals_output,
+                pixels_output,
                 observation_mlp_output,
-                sensor_coverage_output,
             ],
             dim=-1,
         )
@@ -143,15 +128,13 @@ class CommonModule(nn.Module):
             num_cells=[],
         )
     
-    def forward(self, expected_arrivals, sensor_coverage, observation):
-        expected_arrivals_output = self.expected_arrivals_mlp(expected_arrivals)
-        sensor_coverage_output = self.sensor_coverage_mlp(sensor_coverage)
+    def forward(self, pixels, observation):
+        pixels_output = self.pixels_cnn(pixels)
         observation_mlp_output = self.observation_mlp(observation)
         common_mlp_input = torch.cat(
                     [
-                        expected_arrivals_output,
+                        pixels_output,
                         observation_mlp_output,
-                        sensor_coverage_output,
                     ],
                     dim=-1,
                 )
@@ -161,8 +144,7 @@ class CommonModule(nn.Module):
     
 def make_ppo_modules(proof_environment):
     # Define input shape
-    input_shape_expected_arrivals = proof_environment.observation_spec["expected_arrivals"].shape
-    input_shape_sensor_coverage = proof_environment.observation_spec["sensor_coverage"].shape
+    input_shape_pixels = proof_environment.observation_spec["pixels"].shape
     input_shape_observation = proof_environment.observation_spec["observation"].shape
 
     # Define distribution class and kwargs
@@ -179,14 +161,13 @@ def make_ppo_modules(proof_environment):
         }
 
     # input from expected arrivals
-    in_keys_common = ["expected_arrivals", "sensor_coverage", "observation"]
+    in_keys_common = ["pixels", "observation"]
     out_keys_common = ["common_features"]
     
-    input_module = CommonModule(input_shape_expected_arrivals, input_shape_sensor_coverage, input_shape_observation)
-    expected_arrivals_input = torch.ones(input_shape_expected_arrivals)
-    sensor_coverage_input = torch.ones(input_shape_sensor_coverage)
+    input_module = CommonModule(input_shape_pixels, input_shape_observation)
+    pixels_input = torch.ones(input_shape_pixels)
     observation_input = torch.ones(input_shape_observation)
-    common_output = input_module(expected_arrivals_input, sensor_coverage_input, observation_input)
+    common_output = input_module(pixels_input, observation_input)
 
     common_module = TensorDictModule(
         module=input_module,
