@@ -34,6 +34,7 @@ from torchrl.objectives.value.advantages import GAE
 import matplotlib.pyplot as plt
 import imageio
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import matplotlib.patches as patches
 
 from envs.grid.patrol_env_torchrl import PatrolEnv
 
@@ -67,9 +68,9 @@ def main(cfg: "DictConfig"):  # noqa: F821
         else:
             outputs_folder = "../../"
     
-    run_id = "2024-02-12/00-44-07/"
-    model_load_filename = "PPO_PPO_PatrolEnvGrid_b81292eb_24_02_12-00_44_16_iter_final.pt"
-    load_model_dir = outputs_folder + run_id + "saved_models/e2/"
+    run_id = "2024-02-12/23-21-05/"
+    model_load_filename = "PPO_PPO_PatrolEnvGrid_3cbbba5b_24_02_12-23_21_07_iter_final.pt"
+    load_model_dir = outputs_folder + run_id + "saved_models/e3/"
 
     print('Loading model from ' + load_model_dir)
     loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
@@ -88,32 +89,40 @@ def main(cfg: "DictConfig"):  # noqa: F821
     td = test_env.reset()
     episode_tds = []
     grid_history = []
+    birth_history = []
     state_history = []
     loc_h_history = []
     loc_w_history = []
+    sensor_coverages = []
+    task_areas = []
     with set_exploration_type(ExplorationType.MODE):
         while not torch.any(td["done"]):
             td = eval_actor(td)
             td = test_env.step(td)
             #grid, state, (loc_h, loc_w) = test_env.render()
             grid_history.append(td['expected_arrivals_grid'].numpy())
+            birth_history.append(td['birth_rate_grid'].numpy())
             state_history.append(td['state_history'].numpy().copy())
             loc_h_history.append(td['agent_loc'][0].item())
             loc_w_history.append(td['agent_loc'][1].item())
+            sensor_coverages.append(td['sensor_coverage'].numpy().copy())
+            task_areas.append(td['task_area'].numpy().copy())
             episode_tds.append(td.clone())
             td = step_mdp(td)
 
     episode_td = torch.stack(episode_tds).to_tensordict()
     sh_stack = np.stack(state_history)
     g_stack = np.stack(grid_history)
+    b_stack = np.stack(birth_history)
     sh_max = np.max(sh_stack)
     g_max = np.max(g_stack)
+    b_max = np.max(b_stack)
     T = len(episode_tds)
     temp_dir = tempfile.mkdtemp()
 
     H, W = grid_history[-1].shape
     # Function to create agent trajectory grid
-    def create_trajectory_grid(agent_locations_h, agent_locations_w, t, L, H, W):
+    def create_trajectory_grid(agent_locations_h, agent_locations_w, sensor_coverages, t, L, H, W):
         grid = np.zeros((H, W))
         tail_points_h = agent_locations_h[max(0, t-L):t+1]  # Get tail points
         tail_points_w = agent_locations_w[max(0, t-L):t+1]  # Get tail points
@@ -122,7 +131,22 @@ def main(cfg: "DictConfig"):  # noqa: F821
         head_h = tail_points_h[-1]  # Head
         head_w = tail_points_w[-1]  # Head
         grid[head_h, head_w] = 1  # Mark head with highest intensity
+        grid[sensor_coverages[t]] = 0.25 #sensor coverage
         return grid
+    
+    def create_task_rectangle(task_area: torch.Tensor) -> patches.Rectangle:
+        border_width = 2
+        y_indices, x_indices = np.where(task_area)
+        # Determine the bounds of the rectangle
+        y_start, y_end = np.min(y_indices), np.max(y_indices)
+        x_start, x_end = np.min(x_indices), np.max(x_indices)
+
+        # Calculate the height and width of the task area
+        h_task = y_end - y_start + 1
+        w_task = x_end - x_start + 1
+        rect = patches.Rectangle((x_start, y_start), 
+                                 w_task - border_width / 2, h_task - border_width / 2, linewidth=border_width, edgecolor='r', facecolor='none')
+        return rect
     
     desired_width_px = 1504  # Make sure this is divisible by 16
     desired_height_px = 512  # Make sure this is divisible by 16
@@ -131,24 +155,44 @@ def main(cfg: "DictConfig"):  # noqa: F821
     # Calculate figure size in inches
     fig_width = desired_width_px / dpi
     fig_height = desired_height_px / dpi
-    fig, axs = plt.subplots(1, 3, figsize=(fig_width, fig_height))
+    fig, axs = plt.subplots(2, 2, figsize=(fig_width, fig_height))
+    plt.subplots_adjust(hspace=0.5)
     canvas = FigureCanvas(fig)
-    def update_plots(t, axs):
-        for ax in axs:
-            ax.clear()
 
-        axs[0].set_title('Expected Arrivals')
-        axs[1].set_title('Occupation Intensities')
-        axs[2].set_title('Agent Trajectory')        
-        # Arrival intensities
-        axs[0].imshow(grid_history[t], cmap='viridis', vmin=0, vmax=g_max)
-    
-        # Occupation intensities
-        axs[1].imshow(state_history[t], cmap='viridis', vmin=0, vmax=sh_max)
-        # Agent trajectory grid
-        trajectory_grid = create_trajectory_grid(loc_h_history, loc_w_history, t, L, H, W)
-        axs[2].imshow(trajectory_grid, cmap='hot', vmin=0, vmax=1)
+    def update_plots(t, axs):
+        for ax_row in axs:
+            for ax in ax_row:
+                ax.clear()
+
+        axs[0, 0].set_title('Agent trajectory')    
+        axs[0, 1].set_title('Expected current targets')
+
+        axs[1, 0].set_title('Agent trajectory history')
+        axs[1, 1].set_title('Arriving targets per time step')
         
+        # Agent trajectory 
+        trajectory_grid = create_trajectory_grid(loc_h_history, loc_w_history, sensor_coverages, t, L, H, W)
+        pos = axs[0, 0].imshow(trajectory_grid, cmap='hot', vmin=0, vmax=2)
+        task_rect = create_task_rectangle(task_areas[t])
+        # Add the rectangle patch to the plot
+        axs[0, 0].add_patch(task_rect)
+            
+        # Expected arrivals
+        pos = axs[0, 1].imshow(grid_history[t], cmap='viridis', vmin=0, vmax=g_max)
+        if t == 0:
+            fig.colorbar(pos, ax=axs[0, 1])
+
+        # Occupation intensities
+        pos = axs[1, 0].imshow(state_history[t], cmap='viridis', vmin=0, vmax=sh_max)
+        if t == 0:
+            fig.colorbar(pos, ax=axs[1, 0])
+
+        # Additions per time step 
+        pos = axs[1, 1].imshow(birth_history[t], cmap='viridis', vmin=0, vmax=b_max)
+        if t == 0:
+            fig.colorbar(pos, ax=axs[1, 1])
+
+
     video_path = 'visualization_video.mp4'
     with imageio.get_writer(video_path, fps=N) as writer:
         for t in range(T):
