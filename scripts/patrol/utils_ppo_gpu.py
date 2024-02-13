@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 
 from torchrl.modules import (
@@ -6,6 +8,7 @@ from torchrl.modules import (
     MLP,
     OneHotCategorical,
     MaskedOneHotCategorical,
+    ReparamGradientStrategy,
     MaskedCategorical,
     ProbabilisticActor,
     TanhNormal,
@@ -81,6 +84,23 @@ def make_parallel_env(num_parallel = 1, device: str = "cpu", render_mode=None):
 
     # return env
 
+class MyMaskedOneHotCategorical(MaskedOneHotCategorical):
+    def __init__(
+        self,
+        logits: Optional[torch.Tensor] = None,
+        probs: Optional[torch.Tensor] = None,
+        mask: torch.Tensor = None,
+        indices: torch.Tensor = None,
+        neg_inf: float = float("-inf"),
+        padding_value: Optional[int] = None,
+        grad_method: ReparamGradientStrategy = ReparamGradientStrategy.PassThrough,
+    ) -> None:
+        super().__init__(logits, probs, mask, indices, neg_inf, padding_value, grad_method)
+
+    @property
+    def mode(self):
+        return torch.nn.functional.one_hot(self.probs.argmax(axis=-1), self.probs.shape[-1])
+    
 class CommonModule(nn.Module):
     def __init__(self, 
                  input_shape_pixels, 
@@ -150,7 +170,7 @@ def make_ppo_modules(proof_environment):
     # Define distribution class and kwargs
     if isinstance(proof_environment.action_spec.space, DiscreteBox):
         num_outputs = proof_environment.action_spec.space.n
-        distribution_class = MaskedOneHotCategorical
+        distribution_class = MyMaskedOneHotCategorical
         distribution_kwargs = {}
     else:  # is ContinuousBox
         num_outputs = proof_environment.action_spec.shape

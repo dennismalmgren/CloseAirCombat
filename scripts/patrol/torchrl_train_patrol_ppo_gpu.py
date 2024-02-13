@@ -77,8 +77,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
         average_gae=False,
     )
     loss_module = ClipPPOLoss(
-        actor_network=actor,
-        critic_network=critic,
+        actor=actor,
+        critic=critic,
         clip_epsilon=cfg.loss.clip_epsilon,
         loss_critic_type=cfg.loss.loss_critic_type,
         entropy_coef=cfg.loss.entropy_coef,
@@ -140,6 +140,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     load_from_debug = False
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
+
     if load_model:
         if run_as_debug:
             if load_from_debug:
@@ -149,12 +150,12 @@ def main(cfg: "DictConfig"):  # noqa: F821
         else:
             if load_from_debug:
                 outputs_folder = "../../../../../outputs"
-            else:
+            else:                
                 outputs_folder = "../../"
-        
+
         run_id = "2024-02-13/16-10-53/"
         model_load_filename = "PPO_PPO_PatrolEnvGrid_20743568_24_02_13-16_10_54_iter_final.pt"
-        load_model_dir = outputs_folder + run_id + "saved_models/e3/"
+        load_model_dir = outputs_folder + "/saved_models/"
         print('Loading model from ' + load_model_dir)
         loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
         actor_state = loaded_state['actor']
