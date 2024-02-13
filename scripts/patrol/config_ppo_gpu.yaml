@@ -24,18 +24,18 @@ optim:
   eps: 1.0e-6
   weight_decay: 0.01
   max_grad_norm: 10.0
-  anneal_lr: True
+  anneal_lr: False
 
 # loss
 loss:
-  gamma: 0.99
+  gamma: 0.999
   mini_batch_size: 4000
-  ppo_epochs: 10
+  ppo_epochs: 5
   gae_lambda: 0.95
-  clip_epsilon: 0.1
-  anneal_clip_epsilon: True
+  clip_epsilon: 0.2
+  anneal_clip_epsilon: False
   critic_coef: 1.0
-  entropy_coef: 0.01
+  entropy_coef: 0.02
   loss_critic_type: l2
 
 model_save:

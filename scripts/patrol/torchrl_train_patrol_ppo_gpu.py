@@ -284,7 +284,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             save_model_dir = "saved_models/" + cfg_model_save_experiment
             os.makedirs(save_model_dir, exist_ok=True)
 
-            torch.save(savestate, save_model_dir + f"/{model_name}_iter_{i}.pt")
+            #torch.save(savestate, save_model_dir + f"/{model_name}_iter_{i}.pt")
 
     collector.shutdown()
     torch.save(savestate, save_model_dir + f"/{model_name}_iter_final.pt")

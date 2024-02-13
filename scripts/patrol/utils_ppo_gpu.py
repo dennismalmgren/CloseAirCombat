@@ -33,6 +33,7 @@ from torchrl.envs import (
 )
 from torchrl.data.tensor_specs import DiscreteBox
 from tensordict.nn import TensorDictModule, TensorDictSequential
+from torch import nn
 
 from torchrl.envs import (
     GymWrapper, TransformedEnv, RewardSum, 
@@ -80,9 +81,89 @@ def make_parallel_env(num_parallel = 1, device: str = "cpu", render_mode=None):
 
     # return env
 
+class CommonModule(nn.Module):
+    def __init__(self, 
+                 input_shape_expected_arrivals, 
+                 input_shape_sensor_coverage,
+                 input_shape_observation):
+        super().__init__()
+        self.input_shape_expected_arrivals = input_shape_expected_arrivals
+        self.input_shape_sensor_coverage = input_shape_sensor_coverage
+        self.input_shape_observation = input_shape_observation
+
+        self.expected_arrivals_mlp = MLP(
+            in_features=self.input_shape_expected_arrivals[-1],
+            #in_features=common_cnn_output.shape[-1],
+            activation_class=torch.nn.ELU,
+            activate_last_layer=True,
+            out_features=512,
+            num_cells=[],
+        )
+
+        self.sensor_coverage_mlp = MLP(
+            in_features=self.input_shape_sensor_coverage[-1],
+            #in_features=common_cnn_output.shape[-1],
+            activation_class=torch.nn.ELU,
+            activate_last_layer=True,
+            out_features=512,
+            num_cells=[],
+        )
+
+        self.observation_mlp = MLP(
+            in_features=input_shape_observation[-1],
+            activation_class=torch.nn.ELU,
+            activate_last_layer=True,
+            out_features=512,
+            num_cells=[],
+        )
+        
+        expected_arrivals_input = torch.ones(input_shape_expected_arrivals)
+        sensor_coverage_input = torch.ones(input_shape_sensor_coverage)
+        observation_input = torch.ones(input_shape_observation)
+        expected_arrivals_output = self.expected_arrivals_mlp(expected_arrivals_input)
+        sensor_coverage_output = self.sensor_coverage_mlp(sensor_coverage_input)
+        observation_mlp_output = self.observation_mlp(observation_input)
+
+        common_mlp_input = torch.cat(
+            [
+                expected_arrivals_output,
+                observation_mlp_output,
+                sensor_coverage_output,
+            ],
+            dim=-1,
+        )
+
+        self.ln = nn.LayerNorm(common_mlp_input.shape)
+
+        self.common_mlp = MLP(
+            in_features=common_mlp_input.shape[-1],
+            activation_class=torch.nn.ELU,
+            activate_last_layer=True,
+            out_features=512,
+            num_cells=[],
+        )
+    
+    def forward(self, expected_arrivals, sensor_coverage, observation):
+        expected_arrivals_output = self.expected_arrivals_mlp(expected_arrivals)
+        sensor_coverage_output = self.sensor_coverage_mlp(sensor_coverage)
+        observation_mlp_output = self.observation_mlp(observation)
+        common_mlp_input = torch.cat(
+                    [
+                        expected_arrivals_output,
+                        observation_mlp_output,
+                        sensor_coverage_output,
+                    ],
+                    dim=-1,
+                )
+        common_mlp_input = self.ln(common_mlp_input)
+        common_mlp_output = self.common_mlp(common_mlp_input)
+        return common_mlp_output
+    
 def make_ppo_modules(proof_environment):
     # Define input shape
-    input_shape = proof_environment.observation_spec["observation"].shape
+    input_shape_expected_arrivals = proof_environment.observation_spec["expected_arrivals"].shape
+    input_shape_sensor_coverage = proof_environment.observation_spec["sensor_coverage"].shape
+    input_shape_observation = proof_environment.observation_spec["observation"].shape
 
     # Define distribution class and kwargs
     if isinstance(proof_environment.action_spec.space, DiscreteBox):
@@ -97,121 +178,57 @@ def make_ppo_modules(proof_environment):
             "max": proof_environment.action_spec.space.high,
         }
 
-    # Define input keys
-    in_keys = ["observation"]
-    common_input = torch.ones(input_shape)
-    if False: #num_envs followed by obs dim
-        # Define a shared Module and TensorDictModule (CNN + MLP)
-        common_cnn = ConvNet(
-            activation_class=torch.nn.ReLU,
-            num_cells=[32, 64, 64],
-            kernel_sizes=[8, 4, 3],
-            strides=[4, 2, 1],
-        )
-        common_cnn_output = common_cnn(torch.ones(input_shape))
-        common_module = TensorDictModule(
-            module=common_cnn,
-            in_keys=in_keys,
-            out_keys=["common_features"],
-        )
-
-        # common_mlp = MLP(
-        #     in_features=common_cnn_output.shape[-1],
-        #     activation_class=torch.nn.ReLU,
-        #     activate_last_layer=True,
-        #     out_features=512,
-        #     num_cells=[],
-        # )
-        # common_mlp_output = common_mlp(common_cnn_output)
-        policy_net = MLP(
-            in_features=common_cnn_output.shape[-1],
-            out_features=num_outputs,
-            activation_class=torch.nn.ReLU,
-            num_cells=[],
-        )
-
-        policy_module = TensorDictModule(
-            module=policy_net,
-            in_keys=["common_features"],
-            out_keys=["logits"],
-        )        
-
-        policy_module = ProbabilisticActor(
-            policy_module,
-            in_keys=["logits", "mask"],
-            spec=CompositeSpec(action=proof_environment.action_spec),
-            distribution_class=distribution_class,
-            distribution_kwargs=distribution_kwargs,
-            return_log_prob=True,
-            default_interaction_type=ExplorationType.RANDOM,
-        )
-
-         # Define another head for the value
-        value_net = MLP(
-            activation_class=torch.nn.ReLU,
-            in_features=common_cnn_output.shape[-1],
-            out_features=1,
-            num_cells=[],
-        )
-        value_module = ValueOperator(
-            value_net,
-            in_keys=["common_features"],
-        )
-    else:
+    # input from expected arrivals
+    in_keys_common = ["expected_arrivals", "sensor_coverage", "observation"]
+    out_keys_common = ["common_features"]
     
-        # common_cnn_output = common_cnn(torch.ones(input_shape))
-        common_mlp = MLP(
-            in_features=input_shape[-1],
-            #in_features=common_cnn_output.shape[-1],
-            activation_class=torch.nn.ReLU,
-            activate_last_layer=True,
-            out_features=512,
-            num_cells=[],
-        )
-        common_mlp_output = common_mlp(common_input)
+    input_module = CommonModule(input_shape_expected_arrivals, input_shape_sensor_coverage, input_shape_observation)
+    expected_arrivals_input = torch.ones(input_shape_expected_arrivals)
+    sensor_coverage_input = torch.ones(input_shape_sensor_coverage)
+    observation_input = torch.ones(input_shape_observation)
+    common_output = input_module(expected_arrivals_input, sensor_coverage_input, observation_input)
 
-        # Define shared net as TensorDictModule
-        common_module = TensorDictModule(
-            module=common_mlp,
-            in_keys=in_keys,
-            out_keys=["common_features"],
-        )
+    common_module = TensorDictModule(
+        module=input_module,
+        in_keys=in_keys_common,
+        out_keys=out_keys_common,
+    )
 
-        # Define on head for the policy
-        policy_net = MLP(
-            in_features=common_mlp_output.shape[-1],
-            out_features=num_outputs,
-            activation_class=torch.nn.ReLU,
-            num_cells=[],
-        )
-        policy_module = TensorDictModule(
-            module=policy_net,
-            in_keys=["common_features"],
-            out_keys=["logits"],
-        )
+    # Define on head for the policy
+    policy_net = MLP(
+        in_features=common_output.shape[-1],
+        out_features=num_outputs,
+        activation_class=torch.nn.ReLU,
+        num_cells=[],
+    )
+    policy_module = TensorDictModule(
+        module=policy_net,
+        in_keys=["common_features"],
+        out_keys=["logits"],
+    )
 
-        # Add probabilistic sampling of the actions
-        policy_module = ProbabilisticActor(
-            policy_module,
-            in_keys=["logits", "mask"],
-            spec=CompositeSpec(action=proof_environment.action_spec),
-            distribution_class=distribution_class,
-            distribution_kwargs=distribution_kwargs,
-            return_log_prob=True,
-            default_interaction_type=ExplorationType.RANDOM,
-        )
+    # Add probabilistic sampling of the actions
+    policy_module = ProbabilisticActor(
+        policy_module,
+        in_keys=["logits", "mask"],
+        spec=CompositeSpec(action=proof_environment.action_spec),
+        distribution_class=distribution_class,
+        distribution_kwargs=distribution_kwargs,
+        return_log_prob=True,
+        default_interaction_type=ExplorationType.RANDOM,
+    )
 
-        # Define another head for the value
-        value_net = MLP(
-            activation_class=torch.nn.ReLU,
-            in_features=common_mlp_output.shape[-1],
-            out_features=1,
-            num_cells=[],
-        )
-        value_module = ValueOperator(
-            value_net,
-            in_keys=["common_features"],
-        )
+    # Define another head for the value
+    value_net = MLP(
+        activation_class=torch.nn.ReLU,
+        in_features=common_output.shape[-1],
+        out_features=1,
+        num_cells=[],
+    )
+    value_module = ValueOperator(
+        value_net,
+        in_keys=["common_features"],
+    )
 
     return common_module, policy_module, value_module
 
