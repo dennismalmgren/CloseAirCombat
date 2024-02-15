@@ -32,7 +32,7 @@ class LatLonNEUConverter:
 
         Args:
             n, e, u (float): target relative position w.r.t. North, East, Down
-            lon, lat, alt (float): observer geodetic lontitude(°), latitude(°), altitude(m); Default=`(60°N, 120°E, 0m)`
+            lat, lon, alt (float): observer geodetic lontitude(°), latitude(°), altitude(m); Default=`(60°N, 120°E, 0m)`
 
         Returns:
             (torch.Tensor): (lat, lon, alt), unit: °, °, m

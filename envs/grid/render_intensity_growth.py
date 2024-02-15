@@ -15,7 +15,7 @@ def test_slicing_native():
     area_width = 40
     area_height = 20
 
-    
+
     sensor_area_h = np.asarray([
         [- sensor_range, 0],
         [ - sensor_halfwidth, sensor_halfwidth + 1],
@@ -126,5 +126,5 @@ def main():
     plt.show()
 
 if __name__ == "__main__":
-    test_slicing_native()
-#    main()
+   # test_slicing_native()
+    main()
