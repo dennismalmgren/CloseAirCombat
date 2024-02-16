@@ -112,6 +112,50 @@ class GridPPP:
     def reset(self):
         self.birth_intensity_initialization.apply(self.birth_intensity_grid)
 
+    def get_square_centered_sensor_coverage_mask_grid(self, location: torch.Tensor, sensor_range: torch.Tensor):
+        #given in grid coordinates
+        #assumes that the sensor_range is of batch_size.
+        #uses grid coordinates. a sensor range of 0 indicates just the location is covered.
+        mask = torch.zeros((*self.batch_size, self.H, self.W), dtype = torch.bool, device = self.device)
+        if len(self.batch_size) == 0:
+            mask[max(0, location[0] - sensor_range):location[0] + sensor_range + 1, max(0, location[1] - sensor_range):location[1] + sensor_range + 1] = True
+        else:
+            for i in range(self.batch_size[0]):
+                mask[i, max(0, location[i, 0] - sensor_range[i]):location[i, 0] + sensor_range[i] + 1, max(0, location[i, 1] - sensor_range[i]):location[i, 1] + sensor_range[i] + 1] = True
+        return mask
+    
+    def get_square_centered_sensor_coverage_mask(self, location: torch.Tensor, sensor_range_meters: torch.Tensor):
+        #assumes that the sensor_range is of batch_size.
+        #convert meters to grid coordinates.
+        y = location[..., 0]
+        x = location[..., 1]
+        y = y / self.cell_height
+        x = x / self.cell_width
+        sensor_range = sensor_range_meters / self.cell_width
+        sensor_range = sensor_range.to(torch.int)
+        #get the grid coordinates.
+        y = y.to(torch.int)
+        x = x.to(torch.int)
+        #get the mask.
+        mask = torch.zeros((*self.batch_size, self.H, self.W), dtype = torch.bool, device = self.device)
+        if len(self.batch_size) == 0:
+            mask[max(0, y - sensor_range):y + sensor_range + 1, max(0, x - sensor_range):x + sensor_range + 1] = True
+        else:
+            for i in range(self.batch_size[0]):
+                mask[i, max(0, y[i] - sensor_range[i]):y[i] + sensor_range[i] + 1, max(0, x[i] - sensor_range[i]):x[i] + sensor_range[i] + 1] = True
+        return mask
+
+        # def get_rectangular_sensor_coverage_mask(self, 
+    #                                          sensor_pos_lla: torch.Tensor,
+    #                                          sensor_direction: torch.Tensor, #0, 1, 2, 3 for local euclidean direction "NESW"
+    #                                          sensor_range: torch.Tensor, 
+    #                                          sensor_width: torch.Tensor):
+    #     #only supports sensors rotated by 90 degrees.
+    #     masked_grid = torch.Tensor((*self.grid_patrol_task.batch_size, self.grid_patrol_task.H, self.grid_patrol_task.W), dtype = torch.bool)
+    #     #convert to meters.
+    #     yxz = self.converter.LLA2NEU(sensor_pos_lla[0], sensor_pos_lla[1], sensor_pos_lla[2])
+    #     y, x, z = yxz
+    #     if sensor_direction == 0:
 
 
 def get_NEU_Z_from_LLA(lat: torch.Tensor, lon: torch.Tensor, altitude: torch.Tensor):
@@ -160,17 +204,6 @@ class GridLatLonMapper:
         lat, lon, alt = self.converter.NEU2LLA(y.item(), x.item(), self.z0.item())
         return lat, lon, alt
     
-    # def get_rectangular_sensor_coverage_mask(self, 
-    #                                          sensor_pos_lla: torch.Tensor,
-    #                                          sensor_direction: torch.Tensor, #0, 1, 2, 3 for local euclidean direction "NESW"
-    #                                          sensor_range: torch.Tensor, 
-    #                                          sensor_width: torch.Tensor):
-    #     #only supports sensors rotated by 90 degrees.
-    #     masked_grid = torch.Tensor((*self.grid_patrol_task.batch_size, self.grid_patrol_task.H, self.grid_patrol_task.W), dtype = torch.bool)
-    #     #convert to meters.
-    #     yxz = self.converter.LLA2NEU(sensor_pos_lla[0], sensor_pos_lla[1], sensor_pos_lla[2])
-    #     y, x, z = yxz
-    #     if sensor_direction == 0:
 
         #find all the covered grid cell points.
 

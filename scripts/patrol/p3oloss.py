@@ -201,8 +201,8 @@ class P3OLoss(PPOLoss):
 
         log_weight_minus_1 = log_weight.exp() - 1
         tau = 4.0
-#        gain = torch.sigmoid(tau * log_weight_minus_1) * 4 / tau * advantage
-        gain = torch.sgn(log_weight_minus_1) * (torch.exp(torch.abs(log_weight_minus_1)) - 1) * advantage
+        gain = torch.sigmoid(tau * log_weight_minus_1) * 4 / tau * advantage
+#        gain = torch.sgn(log_weight_minus_1) * (torch.exp(torch.abs(log_weight_minus_1)) - 1) * advantage
         #Calculate KL
         # previous_dist = self.actor_network.build_dist_from_params(tensordict)
         # with self.actor_network_params.to_module(
