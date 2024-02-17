@@ -13,6 +13,7 @@ from tensordict import TensorDict, TensorDictBase
 from tensordict.nn import dispatch, ProbabilisticTensorDictSequential, TensorDictModule
 from tensordict.utils import NestedKey
 from torch import distributions as d
+import torch.nn.functional as F
 
 from torchrl.objectives.utils import (
     _cache_values,
@@ -122,7 +123,6 @@ class P3OLoss(PPOLoss):
         actor_network: ProbabilisticTensorDictSequential | None = None,
         critic_network: TensorDictModule | None = None,
         *,
-        clip_epsilon: float = 0.2,
         entropy_bonus: bool = True,
         samples_mc_entropy: int = 1,
         entropy_coef: float = 0.01,
@@ -131,6 +131,7 @@ class P3OLoss(PPOLoss):
         normalize_advantage: bool = True,
         gamma: float = None,
         separate_losses: bool = False,
+        beta: float = 1.0,
         **kwargs,
     ):
         super(P3OLoss, self).__init__(
@@ -146,26 +147,16 @@ class P3OLoss(PPOLoss):
             separate_losses=separate_losses,
             **kwargs,
         )
-        beta = 1.0
-        self.register_buffer("clip_epsilon", torch.tensor(clip_epsilon))
         self.register_buffer("beta", torch.tensor(beta))
-
-    @property
-    def _clip_bounds(self):
-        return (
-            math.log1p(-self.clip_epsilon),
-            math.log1p(self.clip_epsilon),
-        )
 
     @property
     def out_keys(self):
         if self._out_keys is None:
-            keys = ["loss_objective"]
+            keys = ["loss_objective", "kl"]
             if self.entropy_bonus:
                 keys.extend(["entropy", "loss_entropy"])
             if self.loss_critic:
                 keys.append("loss_critic")
-            keys.append("ESS")
             self._out_keys = keys
         return self._out_keys
 
@@ -173,64 +164,56 @@ class P3OLoss(PPOLoss):
     def out_keys(self, values):
         self._out_keys = values
 
+
     @dispatch
     def forward(self, tensordict: TensorDictBase) -> TensorDictBase:
-        tensordict = tensordict.clone(False)
-        advantage = tensordict.get(self.tensor_keys.advantage, None)
+        tensordict_copy = tensordict.clone(False)
+        try:
+            previous_dist = self.actor_network.build_dist_from_params(tensordict)
+        except KeyError:
+            raise KeyError(
+                "The parameters of the distribution were not found. "
+                f"Make sure they are provided to {type(self).__name__}"
+            )
+        advantage = tensordict_copy.get(self.tensor_keys.advantage, None)
         if advantage is None:
             self.value_estimator(
-                tensordict,
+                tensordict_copy,
                 params=self._cached_critic_network_params_detached,
                 target_params=self.target_critic_network_params,
             )
-            advantage = tensordict.get(self.tensor_keys.advantage)
+            advantage = tensordict_copy.get(self.tensor_keys.advantage)
         if self.normalize_advantage and advantage.numel() > 1:
             loc = advantage.mean()
             scale = advantage.std().clamp_min(1e-6)
             advantage = (advantage - loc) / scale
+        log_weight, dist = self._log_weight(tensordict_copy)
 
-        log_weight, dist = self._log_weight(tensordict)
-        # ESS for logging
-        with torch.no_grad():
-            # In theory, ESS should be computed on particles sampled from the same source. Here we sample according
-            # to different, unrelated trajectories, which is not standard. Still it can give a idea of the dispersion
-            # of the weights.
-            lw = log_weight.squeeze()
-            ess = (2 * lw.logsumexp(0) - (2 * lw).logsumexp(0)).exp()
-            batch = log_weight.shape[0]
-
+        advantage = F.relu(advantage)
         log_weight_minus_1 = log_weight.exp() - 1
         tau = 4.0
-        gain = torch.sigmoid(tau * log_weight_minus_1) * 4 / tau * advantage
-#        gain = torch.sgn(log_weight_minus_1) * (torch.exp(torch.abs(log_weight_minus_1)) - 1) * advantage
-        #Calculate KL
-        # previous_dist = self.actor_network.build_dist_from_params(tensordict)
-        # with self.actor_network_params.to_module(
-        #     self.actor_network
-        # ) if self.functional else contextlib.nullcontext():
-        #     current_dist = self.actor_network.get_dist(tensordict)
-        # try:
-        #     kl = torch.distributions.kl.kl_divergence(previous_dist, current_dist)
-        # except NotImplementedError:
-        #     x = previous_dist.sample((self.samples_mc_kl,))
-        #     kl = (previous_dist.log_prob(x) - current_dist.log_prob(x)).mean(0)
-        # kl = kl.unsqueeze(-1)
-        neg_objective_loss = gain #- self.beta * kl
+        neg_loss = torch.sigmoid(tau * log_weight_minus_1) * 4 / tau * advantage
+        with self.actor_network_params.to_module(
+            self.actor_network
+        ) if self.functional else contextlib.nullcontext():
+            current_dist = self.actor_network.get_dist(tensordict_copy)
+        try:
+            kl = torch.distributions.kl.kl_divergence(previous_dist, current_dist)
+        except NotImplementedError:
+            x = previous_dist.sample((self.samples_mc_kl,))
+            kl = (previous_dist.log_prob(x) - current_dist.log_prob(x)).mean(0)
+        kl = kl.unsqueeze(-1)
+        neg_loss = neg_loss - self.beta * kl
 
-#        gain1 = log_weight.exp() * advantage
-
- #       log_weight_clip = log_weight.clamp(*self._clip_bounds)
-#        gain2 = log_weight_clip.exp() * advantage
-
- #       gain = torch.stack([gain1, gain2], -1).min(dim=-1)[0]
-        td_out = TensorDict({"loss_objective": -neg_objective_loss.mean()}, [])
+        td_out = TensorDict({"loss_objective": -neg_loss.mean(),
+                             "kl": kl.detach().mean()}, [])
 
         #if self.entropy_bonus:
-        #    entropy = self.get_entropy_bonus(dist)
-        #    td_out.set("entropy", entropy.mean().detach())  # for logging
-        #    td_out.set("loss_entropy", -self.entropy_coef * entropy.mean()) #start without entropy bonus.
+        entropy = self.get_entropy_bonus(dist)
+        td_out.set("entropy", entropy.mean().detach())  # for logging
+        td_out.set("loss_entropy", -self.entropy_coef * entropy.mean()) 
+
         if self.critic_coef:
             loss_critic = self.loss_critic(tensordict)
             td_out.set("loss_critic", loss_critic.mean())
-        td_out.set("ESS", ess.mean() / batch)
         return td_out
