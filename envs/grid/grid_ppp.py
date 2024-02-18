@@ -2,6 +2,7 @@ import sys
 import os
 
 import torch
+from torch import vmap
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
@@ -19,6 +20,7 @@ class UniformNoMovementGridBirthIntensityInitialization(GridBirthIntensityInitia
         self.batch_size = batch_size
         self.intensity = intensity.reshape(*self.batch_size, 1, 1)
 
+    #TODO: Later there will be a t argument such that the birth intensity can change over the course of the scenario.
     def apply(self,
               grid: torch.Tensor):
         grid.fill_(0)
@@ -84,12 +86,18 @@ class GridPPP:
         self.width = torch.tensor(width, device=device)
         self.cell_height = self.height / self.H
         self.cell_width = self.width / self.W
-        self.cell_w = torch.arange(0, self.W, dtype = torch.float32, device = device) + 0.5
-        self.cell_h = torch.arange(0, self.H, dtype = torch.float32, device = device) + 0.5
+        self.cell_w = torch.arange(0, self.W, dtype = torch.float32, device = self.device) + 0.5
+        self.cell_h = torch.arange(0, self.H, dtype = torch.float32, device = self.device) + 0.5
         self.cell_w *= self.cell_width
         self.cell_h *= self.cell_height
         self.cell_ww, self.cell_hh = torch.meshgrid(self.cell_w, self.cell_h)
-        
+        self.hh, self.ww = torch.meshgrid(torch.arange(0, self.H, dtype = torch.int, device = self.device), 
+                                          torch.arange(0, self.W, dtype = torch.int, device = self.device))
+        self.hh = self.hh.expand((*self.batch_size, H, W))
+        self.ww = self.ww.expand((*self.batch_size, H, W))
+        #get the mask.
+        self.zero_val = torch.tensor(0, device=self.device)
+        self.one_val = torch.tensor(1, device=self.device)
         self.birth_intensity_grid = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
         self.current_intensity_grid = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
         if ps.shape != batch_size:
@@ -99,9 +107,10 @@ class GridPPP:
         self.ps = ps.reshape(*batch_size, 1, 1)
         self.pd = pd.reshape(*batch_size, 1, 1).expand_as(self.current_intensity_grid)
         self.birth_intensity_initialization = birth_intensity_initialization
-        self.birth_intensity_initialization.apply(self.birth_intensity_grid)
+        
     
     def predict(self):
+        self.birth_intensity_initialization.apply(self.birth_intensity_grid)
         self.current_intensity_grid = self.ps * self.current_intensity_grid + self.birth_intensity_grid
 
     def update(self, sensor_mask: torch.Tensor):
@@ -116,12 +125,18 @@ class GridPPP:
         #given in grid coordinates
         #assumes that the sensor_range is of batch_size.
         #uses grid coordinates. a sensor range of 0 indicates just the location is covered.
+        y = location[..., 0]
+        x = location[..., 1]        
         mask = torch.zeros((*self.batch_size, self.H, self.W), dtype = torch.bool, device = self.device)
-        if len(self.batch_size) == 0:
-            mask[max(0, location[0] - sensor_range):location[0] + sensor_range + 1, max(0, location[1] - sensor_range):location[1] + sensor_range + 1] = True
-        else:
-            for i in range(self.batch_size[0]):
-                mask[i, max(0, location[i, 0] - sensor_range[i]):location[i, 0] + sensor_range[i] + 1, max(0, location[i, 1] - sensor_range[i]):location[i, 1] + sensor_range[i] + 1] = True
+        y_min = torch.max(self.zero_val, y - sensor_range)
+        y_max = y + sensor_range + self.one_val
+        x_min = torch.max(self.zero_val, x - sensor_range)
+        x_max = x + sensor_range + self.one_val
+        y_min = y_min.reshape((*self.batch_size, 1, 1))
+        y_max = y_max.reshape((*self.batch_size, 1, 1))
+        x_min = x_min.reshape((*self.batch_size, 1, 1))
+        x_max = x_max.reshape((*self.batch_size, 1, 1))
+        mask = (self.hh >= y_min) & (self.hh < y_max) & (self.ww >= x_min) & (self.ww < x_max)
         return mask
     
     def get_square_centered_sensor_coverage_mask(self, location: torch.Tensor, sensor_range_meters: torch.Tensor):
@@ -136,26 +151,22 @@ class GridPPP:
         #get the grid coordinates.
         y = y.to(torch.int)
         x = x.to(torch.int)
-        #get the mask.
+
         mask = torch.zeros((*self.batch_size, self.H, self.W), dtype = torch.bool, device = self.device)
-        if len(self.batch_size) == 0:
-            mask[max(0, y - sensor_range):y + sensor_range + 1, max(0, x - sensor_range):x + sensor_range + 1] = True
-        else:
-            for i in range(self.batch_size[0]):
-                mask[i, max(0, y[i] - sensor_range[i]):y[i] + sensor_range[i] + 1, max(0, x[i] - sensor_range[i]):x[i] + sensor_range[i] + 1] = True
+
+        y_min = torch.max(self.zero_val, y - sensor_range)
+        y_max = y + sensor_range + self.one_val
+        x_min = torch.max(self.zero_val, x - sensor_range)
+        x_max = x + sensor_range + self.one_val
+        y_min = y_min.reshape((*self.batch_size, 1, 1))
+        y_max = y_max.reshape((*self.batch_size, 1, 1))
+        x_min = x_min.reshape((*self.batch_size, 1, 1))
+        x_max = x_max.reshape((*self.batch_size, 1, 1))
+
+        mask = (self.hh >= y_min) & (self.hh < y_max) & (self.ww >= x_min) & (self.ww < x_max)
         return mask
 
-        # def get_rectangular_sensor_coverage_mask(self, 
-    #                                          sensor_pos_lla: torch.Tensor,
-    #                                          sensor_direction: torch.Tensor, #0, 1, 2, 3 for local euclidean direction "NESW"
-    #                                          sensor_range: torch.Tensor, 
-    #                                          sensor_width: torch.Tensor):
-    #     #only supports sensors rotated by 90 degrees.
-    #     masked_grid = torch.Tensor((*self.grid_patrol_task.batch_size, self.grid_patrol_task.H, self.grid_patrol_task.W), dtype = torch.bool)
-    #     #convert to meters.
-    #     yxz = self.converter.LLA2NEU(sensor_pos_lla[0], sensor_pos_lla[1], sensor_pos_lla[2])
-    #     y, x, z = yxz
-    #     if sensor_direction == 0:
+
 
 
 def get_NEU_Z_from_LLA(lat: torch.Tensor, lon: torch.Tensor, altitude: torch.Tensor):
