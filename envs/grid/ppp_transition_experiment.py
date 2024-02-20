@@ -16,7 +16,7 @@ def main_device():
     height = 400
     #B = 10
     #batch_size = torch.Size([B])
-    batch_size = torch.Size([600])
+    batch_size = torch.Size([1])
     
     cell_width = 1000.0
     cell_height = 1000.0
@@ -79,18 +79,19 @@ def main_device():
     conv2d_layer.weight.data = conv_kernel
     conv2d_layer.weight.requires_grad = False
     w_b = w_b.reshape((1, 1, width, height))
-    #w_b_img = w_b.reshape((width, height)).t()
+    w_b_img = w_b.reshape((width, height)).t()
     
-    #plt.imshow(w_b_img.numpy())
-    #plt.show()
+    plt.imshow(w_b_img.numpy())
+    plt.show()
     w_u = torch.zeros_like(w_b).expand((*batch_size, -1, -1, -1))
     w_u = w_u + w_b
+    print('Starting simulation loop')
     for i in range(3000):
         w_u = w_b + conv2d_layer(w_u)
-        # if i % 500 == 0:
-        #     w_u_img = w_u.reshape((width, height)).t()
-        #     plt.imshow(w_u_img.numpy())
-        #     plt.show()
+        if i % 500 == 0:
+            w_u_img = w_u.reshape((width, height)).t()
+            plt.imshow(w_u_img.numpy())
+            plt.show()
     print('done')
 
 def main_batched():
@@ -98,8 +99,8 @@ def main_batched():
     #this means cells are 1000 by 1000 m.
     #most of everything is not batched, just the current intensity.
     #we just need to take care of broadcasting.
-    width = 200
-    height = 400
+    width = 400
+    height = 200
     #B = 10
     #batch_size = torch.Size([B])
     batch_size = torch.Size([1])
@@ -166,16 +167,16 @@ def main_batched():
     w_b = w_b.reshape((1, 1, width, height))
     w_b_img = w_b.reshape((width, height)).t()
     
-    #plt.imshow(w_b_img.numpy())
-    #plt.show()
+    plt.imshow(w_b_img.numpy())
+    plt.show()
     w_u = torch.zeros_like(w_b).expand((*batch_size, -1, -1, -1))
     w_u = w_u + w_b
     for i in range(3000):
         w_u = w_b + conv2d_layer(w_u)
-        # if i % 500 == 0:
-        #     w_u_img = w_u.reshape((width, height)).t()
-        #     plt.imshow(w_u_img.numpy())
-        #     plt.show()
+        if i % 50 == 0:
+            w_u_img = w_u.reshape((width, height)).t()
+            plt.imshow(w_u_img.numpy())
+            plt.show()
     print('done')
 
 def main():
@@ -259,4 +260,4 @@ def main():
     print('done')
 
 if __name__ == "__main__":
-    main_device()
+    main_batched()

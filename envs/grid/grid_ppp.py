@@ -2,7 +2,9 @@ import sys
 import os
 
 import torch
-from torch import vmap
+from torch import distributions as D
+from torch import nn
+import math
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
@@ -11,8 +13,12 @@ from envs.grid.air_combat_geometry import LatLonNEUConverter
 class GridBirthIntensityInitialization:
     def __init__(self):
         pass
+    
+    def apply(self,
+              grid: torch.Tensor):
+        pass
 
-class UniformNoMovementGridBirthIntensityInitialization(GridBirthIntensityInitialization):
+class UniformGridBirthIntensityInitialization(GridBirthIntensityInitialization):
     def __init__(self,
                  intensity: torch.Tensor,
                  batch_size = torch.Size([])):
@@ -22,10 +28,125 @@ class UniformNoMovementGridBirthIntensityInitialization(GridBirthIntensityInitia
 
     #TODO: Later there will be a t argument such that the birth intensity can change over the course of the scenario.
     def apply(self,
-              grid: torch.Tensor):
+              grid: torch.Tensor,
+              t: int):
         grid.fill_(0)
         grid += self.intensity
 
+class RightSideGridBirthIntensityInitialization(GridBirthIntensityInitialization):
+    def __init__(self,
+                 intensity: torch.Tensor,
+                 batch_size = torch.Size([])):
+        #intensity as a float only supported for empty batch size
+        self.batch_size = batch_size
+        self.intensity = intensity.reshape(*self.batch_size, 1, 1)
+
+    def apply(self,
+              grid: torch.Tensor,
+              t: int):
+        grid.fill_(0)
+        x, y = grid.shape[-2], grid.shape[-1]
+        grid[..., x - 1:, :] = self.intensity
+
+class MotionModelPredictor:
+    def __init__(self):
+        pass
+class ZeroMotionModelPredictor(MotionModelPredictor):
+    def __init__(self,
+                    grid_cell_width: torch.Tensor,
+                    grid_cell_height: torch.Tensor,
+                    width: torch.Tensor,
+                    height: torch.Tensor,
+                    time_step_size: torch.Tensor, 
+                    p_s: torch.Tensor, #probability of survival
+                    batch_size = torch.Size([]),
+                    device = torch.device('cpu')):
+        self.batch_size = batch_size
+        self.device = device
+        self.p_s = p_s
+        self.grid_cell_width = grid_cell_width
+        self.grid_cell_height = grid_cell_height
+        self.time_step_size = time_step_size
+        self.width = width
+        self.height = height
+    
+    def predict(self,
+                current_intensity_grid: torch.Tensor,
+                birth_intensity_grid: torch.Tensor,
+                t: int):
+        current_intensity_grid = birth_intensity_grid + self.p_s * current_intensity_grid
+        return current_intensity_grid
+    
+class ConstantMotionModelPredictor(MotionModelPredictor):
+    def __init__(self,
+                 grid_cell_width: torch.Tensor,
+                 grid_cell_height: torch.Tensor,
+                 width: torch.Tensor,
+                 height: torch.Tensor,
+                 assumed_object_velocity: torch.Tensor,
+                 time_step_size: torch.Tensor, 
+                 p_s: torch.Tensor, #probability of survival
+                 batch_size = torch.Size([]),
+                 device = torch.device('cpu')):
+
+        self.batch_size = batch_size
+        self.device = device
+        self.p_s = p_s        
+        self.grid_cell_width = grid_cell_width
+        self.grid_cell_height = grid_cell_height
+        self.assumed_object_velocity = assumed_object_velocity
+        self.time_step_size = time_step_size
+        self.width = width
+        self.height = height
+        #Velocity vector
+        assumed_object_speed = torch.norm(assumed_object_velocity, dim = -1)
+        #Acceleration variance
+        sigma_w_2 = (0.05*assumed_object_speed)**2
+        F_theta = torch.eye(2, device=device)
+        F_theta_phi = self.time_step_size * torch.eye(2, dtype=torch.float32, device=device)
+        accel_mat = torch.tensor([[0.5*self.time_step_size**2],[self.time_step_size]], device=device)
+        Q_theta = sigma_w_2 * (accel_mat @ accel_mat.t())
+
+        #The uncertainty in velocity is of equal magnitude as the speed,
+        #in both dimensions.
+        P = torch.eye(2, device=device) * assumed_object_speed
+        mean_dist = F_theta_phi @ self.assumed_object_velocity
+        dist_var = F_theta_phi @ P @ F_theta_phi.t() + Q_theta
+        distrib = D.MultivariateNormal(mean_dist, dist_var, validate_args=False)
+        std = torch.sqrt(distrib.variance)
+        cutoff_stdevs = 3
+        kernel_size_x = int(math.ceil(cutoff_stdevs * std[0] / self.grid_cell_width)) * 2 + 1
+        kernel_size_y = int(math.ceil(cutoff_stdevs * std[1] / self.grid_cell_height)) * 2 + 1
+    
+        x = torch.arange(-kernel_size_x // 2 + 1, kernel_size_x // 2 + 1, dtype=torch.float32, device=device) * cell_width
+        y = torch.arange(-kernel_size_y // 2 + 1, kernel_size_y // 2 + 1, dtype=torch.float32, device=device) * cell_height
+        x_grid, y_grid = torch.meshgrid(x, y, indexing='ij')
+        xy_grid = torch.stack([x_grid.flatten(), y_grid.flatten()], dim=-1)
+        xy_grid = xy_grid.unsqueeze(-1)
+        kernel_center_loc = torch.zeros((2, 1), device=device)
+        dists = kernel_center_loc - F_theta @ xy_grid
+        dists = dists.squeeze(-1)
+
+        log_prob_kernel_values = distrib.log_prob(dists).view(kernel_size_x, kernel_size_y)
+        prob_kernel_values = torch.exp(log_prob_kernel_values) 
+        prob_kernel_values = prob_kernel_values / prob_kernel_values.sum() #normalize them, for now. 
+        prob_kernel_values = prob_kernel_values * self.p_s
+        conv_kernel = prob_kernel_values[None, None, :, :]
+        self.conv2d_layer = nn.Conv2d(in_channels=1, out_channels=1, 
+                         kernel_size=conv_kernel.shape[-1], 
+                         bias=False,
+                         padding=(conv_kernel.shape[-2] // 2, conv_kernel.shape[-1] // 2), 
+                         device=device)
+        self.conv2d_layer.weight.data = conv_kernel
+        self.conv2d_layer.weight.requires_grad = False
+
+    def predict(self,
+                current_intensity_grid: torch.Tensor,
+                birth_intensity_grid: torch.Tensor,
+                t: int):
+        current_intensity_grid = birth_intensity_grid + self.conv2d_layer(current_intensity_grid)
+        return current_intensity_grid
+    
 class GridPPP:
     """
     This class defines an H x W grid, approximately corresponding to 
@@ -109,8 +230,9 @@ class GridPPP:
         self.birth_intensity_initialization = birth_intensity_initialization
         
     
-    def predict(self):
-        self.birth_intensity_initialization.apply(self.birth_intensity_grid)
+    def predict(self, t: int):
+        self.birth_intensity_initialization.apply(self.birth_intensity_grid, t)
+
         self.current_intensity_grid = self.ps * self.current_intensity_grid + self.birth_intensity_grid
 
     def update(self, sensor_mask: torch.Tensor):
