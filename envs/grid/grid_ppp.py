@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath
 
 from envs.grid.air_combat_geometry import LatLonNEUConverter
 
-class GridBirthIntensityInitialization:
+class GridBirthExpectedTargetsModel:
     def __init__(self):
         pass
     
@@ -18,39 +18,39 @@ class GridBirthIntensityInitialization:
               grid: torch.Tensor):
         pass
 
-class UniformGridBirthIntensityInitialization(GridBirthIntensityInitialization):
+class UniformGridBirthExpectedTargetsModel(GridBirthExpectedTargetsModel):
     def __init__(self,
-                 intensity: torch.Tensor,
+                 expected_targets_per_area_and_timestep: torch.Tensor,
                  batch_size = torch.Size([])):
         #intensity as a float only supported for empty batch size
         self.batch_size = batch_size
-        self.intensity = intensity.reshape(*self.batch_size, 1, 1)
+        self.expected_targets_per_area_and_timestep = expected_targets_per_area_and_timestep.reshape(*self.batch_size, 1, 1)
 
-    #TODO: Later there will be a t argument such that the birth intensity can change over the course of the scenario.
     def apply(self,
               grid: torch.Tensor,
               t: int):
         grid.fill_(0)
-        grid += self.intensity
+        grid += self.expected_targets_per_area_and_timestep
 
-class RightSideGridBirthIntensityInitialization(GridBirthIntensityInitialization):
+class RightSideGridBirthxpectedTargetsModel(GridBirthExpectedTargetsModel):
     def __init__(self,
-                 intensity: torch.Tensor,
+                 expected_targets_per_area_and_timestep: torch.Tensor,
                  batch_size = torch.Size([])):
         #intensity as a float only supported for empty batch size
         self.batch_size = batch_size
-        self.intensity = intensity.reshape(*self.batch_size, 1, 1)
+        self.expected_targets_per_area_and_timestep = expected_targets_per_area_and_timestep.reshape(*self.batch_size, 1, 1)
 
     def apply(self,
               grid: torch.Tensor,
               t: int):
         grid.fill_(0)
         x, y = grid.shape[-2], grid.shape[-1]
-        grid[..., x - 1:, :] = self.intensity
+        grid[..., x - 1:, :] = self.expected_targets_per_area_and_timestep
 
 class MotionModelPredictor:
     def __init__(self):
         pass
+
 class ZeroMotionModelPredictor(MotionModelPredictor):
     def __init__(self,
                     grid_cell_width: torch.Tensor,
@@ -71,11 +71,11 @@ class ZeroMotionModelPredictor(MotionModelPredictor):
         self.height = height
     
     def predict(self,
-                current_intensity_grid: torch.Tensor,
-                birth_intensity_grid: torch.Tensor,
+                grid_current_expected_targets: torch.Tensor,
+                grid_birth_expected_targets: torch.Tensor,
                 t: int):
-        current_intensity_grid = birth_intensity_grid + self.p_s * current_intensity_grid
-        return current_intensity_grid
+        grid_current_expected_targets = grid_birth_expected_targets + self.p_s * grid_current_expected_targets
+        return grid_current_expected_targets
     
 class ConstantMotionModelPredictor(MotionModelPredictor):
     def __init__(self,
@@ -141,11 +141,11 @@ class ConstantMotionModelPredictor(MotionModelPredictor):
         self.conv2d_layer.weight.requires_grad = False
 
     def predict(self,
-                current_intensity_grid: torch.Tensor,
-                birth_intensity_grid: torch.Tensor,
+                grid_current_expected_targets: torch.Tensor,
+                grid_birth_expected_targets: torch.Tensor,
                 t: int):
-        current_intensity_grid = birth_intensity_grid + self.conv2d_layer(current_intensity_grid)
-        return current_intensity_grid
+        grid_current_expected_targets = grid_birth_expected_targets + self.conv2d_layer(grid_current_expected_targets)
+        return grid_current_expected_targets
     
 class GridPPP:
     """
@@ -194,7 +194,7 @@ class GridPPP:
                  width: float,
                  ps: torch.Tensor,
                  pd: torch.Tensor,
-                 birth_intensity_initialization: GridBirthIntensityInitialization,
+                 grid_birth_expected_targets_model: GridBirthExpectedTargetsModel,
                  *,
                  device = torch.device('cpu'),
                  batch_size: torch.Size = torch.Size([])
@@ -219,29 +219,36 @@ class GridPPP:
         #get the mask.
         self.zero_val = torch.tensor(0, device=self.device)
         self.one_val = torch.tensor(1, device=self.device)
-        self.birth_intensity_grid = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
-        self.current_intensity_grid = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
+        self._grid_birth_expected_targets = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
+        self._grid_current_expected_targets = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
         if ps.shape != batch_size:
             raise Exception("ps should have the same shape as batch_size")
         if pd.shape != batch_size:
             raise Exception("pd should have the same shape as batch_size")
         self.ps = ps.reshape(*batch_size, 1, 1)
         self.pd = pd.reshape(*batch_size, 1, 1).expand_as(self.current_intensity_grid)
-        self.birth_intensity_initialization = birth_intensity_initialization
+        self.grid_birth_expected_targets_model = grid_birth_expected_targets_model
         
+    @property
+    def birth_expected_targets(self):
+        return self._grid_birth_expected_targets
+    
+    @property 
+    def current_expected_targets(self):
+        return self._grid_current_expected_targets
     
     def predict(self, t: int):
-        self.birth_intensity_initialization.apply(self.birth_intensity_grid, t)
+        self.grid_birth_expected_targets_model.apply(self.birth_expected_targets, t)
 
-        self.current_intensity_grid = self.ps * self.current_intensity_grid + self.birth_intensity_grid
+        self._grid_current_expected_targets = self.ps * self._grid_current_expected_targets + self.birth_expected_targets
 
     def update(self, sensor_mask: torch.Tensor):
         #it's probable that pd should be an argument here.
         #sensor_mask should be a tensor of shape (batch_size, H, W) with dtype torch.bool
-        self.current_intensity_grid[sensor_mask] *= (1 - self.pd[sensor_mask]) 
+        self._grid_current_expected_targets[sensor_mask] *= (1 - self.pd[sensor_mask]) 
 
     def reset(self):
-        self.birth_intensity_initialization.apply(self.birth_intensity_grid)
+        self.grid_birth_expected_targets_model.apply(self.birth_expected_targets, 0)
 
     def get_square_centered_sensor_coverage_mask_grid(self, location: torch.Tensor, sensor_range: torch.Tensor):
         #given in grid coordinates

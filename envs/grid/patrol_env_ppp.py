@@ -18,17 +18,11 @@ from torchrl.envs import (
 )
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-
-#from envs.grid.patrol_reachability import calc_distance_matrix
+from envs.grid.grid_ppp import GridPPP, UniformGridBirthExpectedTargetsModel
 
 ObsType = TypeVar("ObsType")
 ActType = TypeVar("ActType")
 
-class Dir(Enum):
-    N = 0
-    E = 1
-    S = 2
-    W = 3
 #fully gpu vectorized env.
     
 class PatrolEnv(EnvBase):
@@ -48,13 +42,17 @@ class PatrolEnv(EnvBase):
                          batch_size=batch_size)
         self.width: torch.Tensor = torch.tensor(40, device=self.device)
         self.height: torch.Tensor = torch.tensor(20, device=self.device)
-        self.loc_scale = torch.tensor([1 / self.height, 1 / self.width], device=self.device)
-        self.dir_scale = torch.tensor(1 / 4, device=self.device)
+        self.loc_scale = torch.tensor([1 / self.height, 1 / self.width], device=self.device) #normalizes x- and y-coordinates to [0, 1]
+        self.dir_scale = torch.tensor(1 / 4, device=self.device) #uses 0, 1/4, 2/4, 3/4, 4/4 as directions with 0 unoccupied. NESW
+        self.expected_targets_scale = 1 / 100.0 #works up to 100 in intensity.
         self.size: torch.Tensor = self.width * self.height
         self.render_mode = render_mode
-        self.is_batched = (self.batch_size is not None and len(self.batch_size) > 0)
-        
-
+        self.grid_ppp = GridPPP(self.height, 
+                           self.width, 
+                           grid_birth_expected_targets_model=UniformGridBirthExpectedTargetsModel(0.1,
+                                                                                   batch_size=self.batch_size), 
+                           device=self.device,
+                           batch_size=self.batch_size)
 
         #so given a direction, the action takes on a different meaning. 
         #0 is forward, 1 is left, 2 is right.
@@ -97,13 +95,10 @@ class PatrolEnv(EnvBase):
         self.hh = hh
         self.ww = ww
 
+        self.t = 0
         #scenario specifics
-        self.birth_rate_grid = torch.ones((*self.batch_size, self.height, self.width), dtype=torch.float32, device = self.device) * 0.1
         self.ps = torch.tensor(0.99, device = self.device)
         self.pd = torch.tensor(0.9, device = self.device)
-        self.expected_arrivals_scale = (1 - self.ps) / (self.birth_rate_grid * self.size)
-
-        self.expected_arrivals_grid = torch.zeros((*self.batch_size, self.height, self.width), dtype=torch.float32, device = self.device) 
         
         self._make_action_mask_filters()
         #self._calculate_dists()
@@ -118,7 +113,7 @@ class PatrolEnv(EnvBase):
         self._set_seed(seed)
 
     def _make_sensor_masks(self):
-        self.sensor_width = 3 #needs to be odd
+        self.sensor_width = 3 #needs to be odd. use area actual width/height to specify
         self.sensor_range = 7
         self.sensor_halfwidth = self.sensor_width // 2
         self.sensor_area_h = torch.tensor([
@@ -174,15 +169,6 @@ class PatrolEnv(EnvBase):
         self.left_right_masks[2, 2] = torch.tensor([1, 0, 1], dtype=torch.bool, device=self.device) 
         self.left_right_masks[2, 3] = torch.tensor([1, 1, 1], dtype=torch.bool, device=self.device) #never gonna happen..
   
-    #def _calculate_dists(self):
-        #dists are a matrix loc_h, loc_w, dir to loc_h, loc_w.
-        #actions/edges are forward, left, right 
-        #we are working with opportunity costs, so closest path indicates reward.
-        #self.dist_matrix = torch.tensor(calc_distance_matrix(self.height.item(), self.width.item()), dtype=torch.float32, device = self.device)
-        
-        #self.dist_matrix_no_dir = self.dist_matrix.min(-1)[0]
-        #self.dist_matrix_no_dir = self.dist_matrix_no_dir / torch.max(torch.nan_to_num(self.dist_matrix_no_dir))
-
     def _make_action_mask(self):
         top_bottom_indices = torch.ones(self.batch_size, dtype=torch.int32, device=self.device) 
         top_bottom_indices[self.agent_loc[..., -2] == 0] = 0
@@ -226,7 +212,7 @@ class PatrolEnv(EnvBase):
             shape=self.batch_size
         )
         if self.render_mode == "":
-            self.observation_spec.set("expected_arrivals_grid", 
+            self.observation_spec.set("current_expected_targets", 
                                       UnboundedContinuousTensorSpec(
                                             shape=(*self.batch_size, self.height, self.width,),
                                             dtype=torch.float32
@@ -250,7 +236,7 @@ class PatrolEnv(EnvBase):
                                             dtype=torch.float32
                                         ))
             
-            self.observation_spec.set("birth_rate_grid", 
+            self.observation_spec.set("birth_expected_targets", 
                             UnboundedContinuousTensorSpec(
                                 shape=(*self.batch_size, self.height, self.width,),
                                 dtype=torch.float32
@@ -306,7 +292,7 @@ class PatrolEnv(EnvBase):
 
     def _create_observation(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Returns
-            expected_arrivals,
+            targets,
             sensor_coverage,
             observation
         """
@@ -320,9 +306,9 @@ class PatrolEnv(EnvBase):
         #* task area mask grid
         #* birth rates grid
         pixels = torch.stack((self.agent_loc_dir_coverage_grid,
-                              self.expected_arrivals_grid,
+                              self.current_expected_targets,
                               self.task_area,
-                              self.birth_rate_grid), dim = -3)
+                              self.birth_expected_targets), dim = -3)
         
         observation = torch.cat((scaled_loc, scaled_dir, 
                                  self.ps.expand_as(self.agent_dir), 
@@ -349,21 +335,25 @@ class PatrolEnv(EnvBase):
 
 
     #separate into predict/update
-    def _update_expected_arrivals(self):
-        self.expected_arrivals_grid = self.expected_arrivals_grid * self.ps + self.birth_rate_grid 
+    def _predict_and_update(self):
+        self.grid_ppp.predict(self.t)
+        self.grid_ppp.update(self.sensor_coverage, self.t)
+        #self.expected_arrivals_grid = self.expected_arrivals_grid * self.ps + self.birth_rate_grid 
 
-        self.expected_arrivals_grid[self.sensor_coverage] *= (1 - self.pd)
+        #self.expected_arrivals_grid[self.sensor_coverage] *= (1 - self.pd)
 
     def _reset(self, tensordict: TensorDict) -> TensorDict:
         #Reset to defaults
         self.agent_loc = torch.zeros((*self.batch_size, 2), dtype=torch.int32, device=self.device)
         self.agent_dir = torch.ones((*self.batch_size, 1), dtype=torch.int32, device=self.device)
         self.task_area = torch.ones((*self.batch_size, self.height, self.width), dtype=torch.bool, device=self.device) #full mask.
-        self.expected_arrivals_grid = torch.zeros((*self.batch_size, self.height, self.width), dtype=torch.float32, device = self.device) 
+        self.grid_ppp.reset()
+        #self.expected_arrivals_grid = torch.zeros((*self.batch_size, self.height, self.width), dtype=torch.float32, device = self.device) 
+        self.t = 0
 
         self._make_sensor_coverage()
 
-        self._update_expected_arrivals()
+        self._predict_and_update()
 
         pixels, observation = self._create_observation()
         terminated = torch.zeros((*self.batch_size, 1), dtype=torch.bool, device = self.device)
@@ -393,18 +383,18 @@ class PatrolEnv(EnvBase):
     
     def _render(self, tensordict: TensorDict):
         #for rendering, we want to add the actual sensor coverage, not only the mission relevant one.
-        tensordict['expected_arrivals_grid'] = self.expected_arrivals_grid
+        tensordict['current_grid_expected_targets'] = self.grid_ppp.current_expected_targets
         tensordict['agent_loc'] = self.agent_loc
         tensordict['agent_dir'] = self.agent_dir
         tensordict['state_history'] = self.state_history
-        tensordict['birth_rate_grid'] = self.birth_rate_grid
+        tensordict['birth_grid_expected_targets'] = self.grid_ppp.birth_expected_targets
         tensordict['task_area'] = self.task_area
         tensordict['sensor_coverage'] = self.sensor_coverage
         return tensordict
     
     def _calculate_reward(self):
         #reward is at most 1.
-        return -torch.sum(torch.sum(self.expected_arrivals_grid * self.task_area * self.expected_arrivals_scale, dim = -1), dim = -1, keepdim=True)
+        return -torch.sum(torch.sum(self.grid_ppp.current_expected_targets * self.task_area * self.expected_targets_scale, dim = -1), dim = -1, keepdim=True)
 
     #use non-static version
     def _step(self, tensordict: TensorDict) -> TensorDict:
@@ -416,9 +406,10 @@ class PatrolEnv(EnvBase):
         next_dir = self.turn_options[action_move_index]
         self.agent_loc = next_loc
         self.agent_dir = next_dir
+        self.t += 1
 
         self._make_sensor_coverage()
-        self._update_expected_arrivals()
+        self._predict_and_update()
         #Create observations
         pixels, observation = self._create_observation()
 
