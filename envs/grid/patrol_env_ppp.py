@@ -18,7 +18,7 @@ from torchrl.envs import (
 )
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-from envs.grid.grid_ppp import GridPPP, UniformGridBirthExpectedTargetsModel
+from envs.grid.grid_ppp import GridPPP, UniformGridBirthExpectedTargetsModel, ZeroMotionPredictorModel
 
 ObsType = TypeVar("ObsType")
 ActType = TypeVar("ActType")
@@ -41,20 +41,42 @@ class PatrolEnv(EnvBase):
         super().__init__(device=device,
                          batch_size=batch_size)
         
-        self.width: torch.Tensor = torch.tensor(40, device=self.device)
-        self.height: torch.Tensor = torch.tensor(20, device=self.device)
-        self.height_meters = 40*10*1000
-        self.width_meters = 20*10*1000
+        self.width: torch.Tensor = torch.tensor(20, device=self.device)
+        self.height: torch.Tensor = torch.tensor(40, device=self.device)
+        self.height_meters = self.height * 10 * 1000
+        self.width_meters = self.width * 10 * 1000
         self.loc_scale = torch.tensor([1 / self.height, 1 / self.width], device=self.device) #normalizes x- and y-coordinates to [0, 1]
         self.dir_scale = torch.tensor(1 / 4, device=self.device) #uses 0, 1/4, 2/4, 3/4, 4/4 as directions with 0 unoccupied. NESW
         self.expected_targets_scale = 1 / 100.0 #works up to 100 in intensity.
         self.size: torch.Tensor = self.width * self.height
         self.render_mode = render_mode
+    
+        self.time_step_size = 5.0 #seconds
 
         #scenario specifics
-        self.ps = torch.tensor(0.99, device = self.device).expand(*batch_size)
-        self.pd = torch.tensor(0.9, device = self.device).expand(*batch_size)
-
+        #these are constant across time and batch so just create one of each.
+        self.ps = torch.tensor(0.99, device = self.device)
+        self.pd = torch.tensor(0.9, device = self.device)
+        model_batch_size = torch.Size([])
+        if len(self.batch_size) > 0:
+            self.ps = self.ps.unsqueeze(0)
+            self.pd = self.pd.unsqueeze(0)
+            model_batch_size = torch.Size([1])
+        self.birth_expected_targets_model = UniformGridBirthExpectedTargetsModel(torch.tensor(0.1, 
+                                            device = self.device),                               
+                                            batch_size=model_batch_size)
+        self.motion_predictor_model = ZeroMotionPredictorModel(
+            self.width_meters / self.width,
+            self.height_meters / self.height,
+            self.width,
+            self.height,
+            self.time_step_size,
+            self.ps,
+            batch_size=model_batch_size,
+            device=self.device
+        )
+        ## the end.
+          
         self.grid_ppp = GridPPP(
                          self.height, 
                            self.width, 
@@ -62,10 +84,10 @@ class PatrolEnv(EnvBase):
                             self.width_meters,
                             self.ps,
                             self.pd,
-                            grid_birth_expected_targets_model=UniformGridBirthExpectedTargetsModel(torch.tensor(0.1, device = self.device),
-                            batch_size=self.batch_size), 
-                           device=self.device,
-                           batch_size=self.batch_size)
+                            grid_birth_expected_targets_model=self.birth_expected_targets_model, 
+                            grid_motion_predictor_model=self.motion_predictor_model,
+                            device=self.device,
+                            batch_size=self.batch_size)
 
         #so given a direction, the action takes on a different meaning. 
         #0 is forward, 1 is left, 2 is right.
@@ -318,11 +340,11 @@ class PatrolEnv(EnvBase):
         pixels = torch.stack((self.agent_loc_dir_coverage_grid,
                               self.grid_ppp.current_expected_targets,
                               self.task_area,
-                              self.grid_ppp.birth_expected_targets), dim = -3)
+                              self.grid_ppp.birth_expected_targets.expand_as(self.grid_ppp.current_expected_targets)), dim = -3)
         
         observation = torch.cat((scaled_loc, scaled_dir, 
-                                 self.ps.unsqueeze(-1), 
-                                 self.pd.unsqueeze(-1), 
+                                 self.ps.expand(*self.batch_size, 1), 
+                                 self.pd.expand(*self.batch_size, 1), 
                                  ), dim=-1)
         return pixels, observation
     

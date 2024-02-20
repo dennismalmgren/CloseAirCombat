@@ -14,8 +14,9 @@ class GridBirthExpectedTargetsModel:
     def __init__(self):
         pass
     
-    def apply(self,
-              grid: torch.Tensor):
+    def predict(self,
+                t: int,
+                grid: torch.Tensor):
         pass
 
 class UniformGridBirthExpectedTargetsModel(GridBirthExpectedTargetsModel):
@@ -26,11 +27,13 @@ class UniformGridBirthExpectedTargetsModel(GridBirthExpectedTargetsModel):
         self.batch_size = batch_size
         self.expected_targets_per_area_and_timestep = expected_targets_per_area_and_timestep.expand(*self.batch_size, 1, 1)
 
-    def apply(self,
-              grid: torch.Tensor,
-              t: int):
-        grid.fill_(0)
-        grid += self.expected_targets_per_area_and_timestep
+    def predict(self,
+                t: int,
+                grid: torch.Tensor,
+              ):
+        if t == 0:
+            grid.fill_(0)
+            grid += self.expected_targets_per_area_and_timestep
 
 class RightSideGridBirthxpectedTargetsModel(GridBirthExpectedTargetsModel):
     def __init__(self,
@@ -40,47 +43,57 @@ class RightSideGridBirthxpectedTargetsModel(GridBirthExpectedTargetsModel):
         self.batch_size = batch_size
         self.expected_targets_per_area_and_timestep = expected_targets_per_area_and_timestep.reshape(*self.batch_size, 1, 1)
 
-    def apply(self,
-              grid: torch.Tensor,
-              t: int):
-        grid.fill_(0)
-        x, y = grid.shape[-2], grid.shape[-1]
-        grid[..., x - 1:, :] = self.expected_targets_per_area_and_timestep
+    def predict(self,
+                t: int,
+                grid: torch.Tensor,
+                ):
+        if t == 0:
+            grid.fill_(0)
+            x, y = grid.shape[-2], grid.shape[-1]
+            grid[..., x - 1:, :] = self.expected_targets_per_area_and_timestep
 
-class MotionModelPredictor:
+class MotionPredictionModel:
     def __init__(self):
         pass
+    
+    def predict(self,
+                t: int,
+                grid_current_expected_targets: torch.Tensor,
+                grid_birth_expected_targets: torch.Tensor,
+                ):
+        pass
 
-class ZeroMotionModelPredictor(MotionModelPredictor):
+class ZeroMotionPredictorModel(MotionPredictionModel):
     def __init__(self,
-                    grid_cell_width: torch.Tensor,
-                    grid_cell_height: torch.Tensor,
+                    grid_cell_width_meters: torch.Tensor,
+                    grid_cell_height_meters: torch.Tensor,
                     width: torch.Tensor,
                     height: torch.Tensor,
                     time_step_size: torch.Tensor, 
-                    p_s: torch.Tensor, #probability of survival
+                    ps: torch.Tensor, #probability of survival
                     batch_size = torch.Size([]),
                     device = torch.device('cpu')):
         self.batch_size = batch_size
         self.device = device
-        self.p_s = p_s
-        self.grid_cell_width = grid_cell_width
-        self.grid_cell_height = grid_cell_height
+        self.ps = ps
+        self.grid_cell_width_meters = grid_cell_width_meters
+        self.grid_cell_height_meters = grid_cell_height_meters
         self.time_step_size = time_step_size
         self.width = width
         self.height = height
     
     def predict(self,
+                t: int,
                 grid_current_expected_targets: torch.Tensor,
                 grid_birth_expected_targets: torch.Tensor,
-                t: int):
-        grid_current_expected_targets = grid_birth_expected_targets + self.p_s * grid_current_expected_targets
+                ):
+        grid_current_expected_targets = grid_birth_expected_targets + self.ps.unsqueeze(-1).unsqueeze(-1) * grid_current_expected_targets
         return grid_current_expected_targets
     
-class ConstantMotionModelPredictor(MotionModelPredictor):
+class ConstantMotionPredictorModel(MotionPredictionModel):
     def __init__(self,
-                 grid_cell_width: torch.Tensor,
-                 grid_cell_height: torch.Tensor,
+                 grid_cell_width_meters: torch.Tensor,
+                 grid_cell_height_meters: torch.Tensor,
                  width: torch.Tensor,
                  height: torch.Tensor,
                  assumed_object_velocity: torch.Tensor,
@@ -92,8 +105,8 @@ class ConstantMotionModelPredictor(MotionModelPredictor):
         self.batch_size = batch_size
         self.device = device
         self.p_s = p_s        
-        self.grid_cell_width = grid_cell_width
-        self.grid_cell_height = grid_cell_height
+        self.grid_cell_width_meters = grid_cell_width_meters
+        self.grid_cell_height_meters = grid_cell_height_meters
         self.assumed_object_velocity = assumed_object_velocity
         self.time_step_size = time_step_size
         self.width = width
@@ -115,11 +128,11 @@ class ConstantMotionModelPredictor(MotionModelPredictor):
         distrib = D.MultivariateNormal(mean_dist, dist_var, validate_args=False)
         std = torch.sqrt(distrib.variance)
         cutoff_stdevs = 3
-        kernel_size_x = int(math.ceil(cutoff_stdevs * std[0] / self.grid_cell_width)) * 2 + 1
-        kernel_size_y = int(math.ceil(cutoff_stdevs * std[1] / self.grid_cell_height)) * 2 + 1
+        kernel_size_x = int(math.ceil(cutoff_stdevs * std[0] / self.grid_cell_width_meters)) * 2 + 1
+        kernel_size_y = int(math.ceil(cutoff_stdevs * std[1] / self.grid_cell_height_meters)) * 2 + 1
     
-        x = torch.arange(-kernel_size_x // 2 + 1, kernel_size_x // 2 + 1, dtype=torch.float32, device=device) * cell_width
-        y = torch.arange(-kernel_size_y // 2 + 1, kernel_size_y // 2 + 1, dtype=torch.float32, device=device) * cell_height
+        x = torch.arange(-kernel_size_x // 2 + 1, kernel_size_x // 2 + 1, dtype=torch.float32, device=device) * self.grid_cell_width_meters
+        y = torch.arange(-kernel_size_y // 2 + 1, kernel_size_y // 2 + 1, dtype=torch.float32, device=device) * self.grid_cell_height_meters
         x_grid, y_grid = torch.meshgrid(x, y, indexing='ij')
         xy_grid = torch.stack([x_grid.flatten(), y_grid.flatten()], dim=-1)
         xy_grid = xy_grid.unsqueeze(-1)
@@ -141,9 +154,9 @@ class ConstantMotionModelPredictor(MotionModelPredictor):
         self.conv2d_layer.weight.requires_grad = False
 
     def predict(self,
+                t: int,
                 grid_current_expected_targets: torch.Tensor,
-                grid_birth_expected_targets: torch.Tensor,
-                t: int):
+                grid_birth_expected_targets: torch.Tensor):
         grid_current_expected_targets = grid_birth_expected_targets + self.conv2d_layer(grid_current_expected_targets)
         return grid_current_expected_targets
     
@@ -195,6 +208,7 @@ class GridPPP:
                  ps: torch.Tensor,
                  pd: torch.Tensor,
                  grid_birth_expected_targets_model: GridBirthExpectedTargetsModel,
+                 grid_motion_predictor_model: MotionPredictionModel,
                  *,
                  device = torch.device('cpu'),
                  batch_size: torch.Size = torch.Size([])
@@ -218,18 +232,23 @@ class GridPPP:
         #get the mask.
         self.zero_val = torch.tensor(0, device=self.device)
         self.one_val = torch.tensor(1, device=self.device)
-        self._grid_birth_expected_targets = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
+        #just need one.
+        if len(self.batch_size) > 0:
+            self._grid_birth_expected_targets = torch.zeros((1, H, W), dtype = torch.float32, device=device)
+        else:
+            self._grid_birth_expected_targets = torch.zeros((H, W), dtype = torch.float32, device=device)
         self._grid_current_expected_targets = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
 
         #if ps.shape != batch_size:
         #    ps = ps.expand(*batch_size)
         #if pd.shape != batch_size:
         #    raise Exception("pd should have the same shape as batch_size")
-        self.ps = ps.reshape(*batch_size, 1, 1)
+        self.ps = ps
         #sensor model should also be a convolution that we soar across the grid.
-        self.pd = pd.reshape(*batch_size, 1, 1).expand_as(self._grid_current_expected_targets)
+        self.pd = pd
         self.grid_birth_expected_targets_model = grid_birth_expected_targets_model
-        
+        self.grid_motion_predictor_model = grid_motion_predictor_model
+
     @property
     def birth_expected_targets(self):
         return self._grid_birth_expected_targets
@@ -239,17 +258,16 @@ class GridPPP:
         return self._grid_current_expected_targets
     
     def predict(self, t: int):
-        self.grid_birth_expected_targets_model.apply(self.birth_expected_targets, t)
-
-        self._grid_current_expected_targets = self.ps * self._grid_current_expected_targets + self.birth_expected_targets
+        self.grid_birth_expected_targets_model.predict(t, self.birth_expected_targets)
+        self.grid_motion_predictor_model.predict(t, self.current_expected_targets, self.birth_expected_targets)
 
     def update(self, t: int, sensor_mask: torch.Tensor):
         #it's probable that pd should be an argument here.
         #sensor_mask should be a tensor of shape (batch_size, H, W) with dtype torch.bool
-        self._grid_current_expected_targets[sensor_mask] *= (1 - self.pd[sensor_mask]) 
+        self._grid_current_expected_targets[sensor_mask] *= (1 - self.pd.squeeze(-1)) 
 
     def reset(self):
-        self.grid_birth_expected_targets_model.apply(self.birth_expected_targets, 0)
+        self.grid_birth_expected_targets_model.predict(0, self.birth_expected_targets)
 
     def get_square_centered_sensor_coverage_mask_grid(self, location: torch.Tensor, sensor_range: torch.Tensor):
         #given in grid coordinates
