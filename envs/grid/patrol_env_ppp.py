@@ -35,22 +35,35 @@ class PatrolEnv(EnvBase):
             *,
             render_mode: Optional[str] = None,
             device: DEVICE_TYPING = None,
-            batch_size: Optional[torch.Size] = None,
+            batch_size: Optional[torch.Size] = torch.Size([]),
             seed = None
         ):
         super().__init__(device=device,
                          batch_size=batch_size)
+        
         self.width: torch.Tensor = torch.tensor(40, device=self.device)
         self.height: torch.Tensor = torch.tensor(20, device=self.device)
+        self.height_meters = 40*10*1000
+        self.width_meters = 20*10*1000
         self.loc_scale = torch.tensor([1 / self.height, 1 / self.width], device=self.device) #normalizes x- and y-coordinates to [0, 1]
         self.dir_scale = torch.tensor(1 / 4, device=self.device) #uses 0, 1/4, 2/4, 3/4, 4/4 as directions with 0 unoccupied. NESW
         self.expected_targets_scale = 1 / 100.0 #works up to 100 in intensity.
         self.size: torch.Tensor = self.width * self.height
         self.render_mode = render_mode
-        self.grid_ppp = GridPPP(self.height, 
+
+        #scenario specifics
+        self.ps = torch.tensor(0.99, device = self.device).expand(*batch_size)
+        self.pd = torch.tensor(0.9, device = self.device).expand(*batch_size)
+
+        self.grid_ppp = GridPPP(
+                         self.height, 
                            self.width, 
-                           grid_birth_expected_targets_model=UniformGridBirthExpectedTargetsModel(0.1,
-                                                                                   batch_size=self.batch_size), 
+                           self.height_meters,
+                            self.width_meters,
+                            self.ps,
+                            self.pd,
+                            grid_birth_expected_targets_model=UniformGridBirthExpectedTargetsModel(torch.tensor(0.1, device = self.device),
+                            batch_size=self.batch_size), 
                            device=self.device,
                            batch_size=self.batch_size)
 
@@ -96,9 +109,6 @@ class PatrolEnv(EnvBase):
         self.ww = ww
 
         self.t = 0
-        #scenario specifics
-        self.ps = torch.tensor(0.99, device = self.device)
-        self.pd = torch.tensor(0.9, device = self.device)
         
         self._make_action_mask_filters()
         #self._calculate_dists()
@@ -306,13 +316,13 @@ class PatrolEnv(EnvBase):
         #* task area mask grid
         #* birth rates grid
         pixels = torch.stack((self.agent_loc_dir_coverage_grid,
-                              self.current_expected_targets,
+                              self.grid_ppp.current_expected_targets,
                               self.task_area,
-                              self.birth_expected_targets), dim = -3)
+                              self.grid_ppp.birth_expected_targets), dim = -3)
         
         observation = torch.cat((scaled_loc, scaled_dir, 
-                                 self.ps.expand_as(self.agent_dir), 
-                                 self.pd.expand_as(self.agent_dir), 
+                                 self.ps.unsqueeze(-1), 
+                                 self.pd.unsqueeze(-1), 
                                  ), dim=-1)
         return pixels, observation
     
@@ -337,7 +347,7 @@ class PatrolEnv(EnvBase):
     #separate into predict/update
     def _predict_and_update(self):
         self.grid_ppp.predict(self.t)
-        self.grid_ppp.update(self.sensor_coverage, self.t)
+        self.grid_ppp.update(self.t, self.sensor_coverage)
         #self.expected_arrivals_grid = self.expected_arrivals_grid * self.ps + self.birth_rate_grid 
 
         #self.expected_arrivals_grid[self.sensor_coverage] *= (1 - self.pd)

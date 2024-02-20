@@ -24,7 +24,7 @@ class UniformGridBirthExpectedTargetsModel(GridBirthExpectedTargetsModel):
                  batch_size = torch.Size([])):
         #intensity as a float only supported for empty batch size
         self.batch_size = batch_size
-        self.expected_targets_per_area_and_timestep = expected_targets_per_area_and_timestep.reshape(*self.batch_size, 1, 1)
+        self.expected_targets_per_area_and_timestep = expected_targets_per_area_and_timestep.expand(*self.batch_size, 1, 1)
 
     def apply(self,
               grid: torch.Tensor,
@@ -188,10 +188,10 @@ class GridPPP:
     For measures, we transform to a local euclidean system in which we measure, and then back.
     """
     def __init__(self,
-                 H: int,
-                 W: int,
-                 height: float,
-                 width: float,
+                 H: torch.Tensor,
+                 W: torch.Tensor,
+                 height_meters: float,
+                 width_meters: float,
                  ps: torch.Tensor,
                  pd: torch.Tensor,
                  grid_birth_expected_targets_model: GridBirthExpectedTargetsModel,
@@ -201,19 +201,18 @@ class GridPPP:
                  ):
         self.batch_size = batch_size
         self.device = device
-        self.H = torch.tensor(H, device=device)
-        self.W = torch.tensor(W, device=device)
-        self.height = torch.tensor(height, device=device)
-        self.width = torch.tensor(width, device=device)
-        self.cell_height = self.height / self.H
-        self.cell_width = self.width / self.W
+        self.H = H
+        self.W = W
+        self.height_meters = torch.tensor(height_meters, device=device)
+        self.width_meters = torch.tensor(width_meters, device=device)
+        self.cell_height = self.height_meters / self.H
+        self.cell_width = self.width_meters / self.W
         self.cell_w = torch.arange(0, self.W, dtype = torch.float32, device = self.device) + 0.5
         self.cell_h = torch.arange(0, self.H, dtype = torch.float32, device = self.device) + 0.5
         self.cell_w *= self.cell_width
         self.cell_h *= self.cell_height
-        self.cell_ww, self.cell_hh = torch.meshgrid(self.cell_w, self.cell_h)
         self.hh, self.ww = torch.meshgrid(torch.arange(0, self.H, dtype = torch.int, device = self.device), 
-                                          torch.arange(0, self.W, dtype = torch.int, device = self.device))
+                                          torch.arange(0, self.W, dtype = torch.int, device = self.device), indexing="ij")
         self.hh = self.hh.expand((*self.batch_size, H, W))
         self.ww = self.ww.expand((*self.batch_size, H, W))
         #get the mask.
@@ -221,12 +220,14 @@ class GridPPP:
         self.one_val = torch.tensor(1, device=self.device)
         self._grid_birth_expected_targets = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
         self._grid_current_expected_targets = torch.zeros((*batch_size, H, W), dtype = torch.float32, device=device)
-        if ps.shape != batch_size:
-            raise Exception("ps should have the same shape as batch_size")
-        if pd.shape != batch_size:
-            raise Exception("pd should have the same shape as batch_size")
+
+        #if ps.shape != batch_size:
+        #    ps = ps.expand(*batch_size)
+        #if pd.shape != batch_size:
+        #    raise Exception("pd should have the same shape as batch_size")
         self.ps = ps.reshape(*batch_size, 1, 1)
-        self.pd = pd.reshape(*batch_size, 1, 1).expand_as(self.current_intensity_grid)
+        #sensor model should also be a convolution that we soar across the grid.
+        self.pd = pd.reshape(*batch_size, 1, 1).expand_as(self._grid_current_expected_targets)
         self.grid_birth_expected_targets_model = grid_birth_expected_targets_model
         
     @property
@@ -242,7 +243,7 @@ class GridPPP:
 
         self._grid_current_expected_targets = self.ps * self._grid_current_expected_targets + self.birth_expected_targets
 
-    def update(self, sensor_mask: torch.Tensor):
+    def update(self, t: int, sensor_mask: torch.Tensor):
         #it's probable that pd should be an argument here.
         #sensor_mask should be a tensor of shape (batch_size, H, W) with dtype torch.bool
         self._grid_current_expected_targets[sensor_mask] *= (1 - self.pd[sensor_mask]) 
