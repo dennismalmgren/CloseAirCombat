@@ -18,7 +18,13 @@ from torchrl.envs import (
 )
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-from envs.grid.grid_ppp import GridPPP, UniformGridBirthExpectedTargetsModel, ZeroMotionPredictorModel
+from envs.grid.grid_ppp import (
+    GridPPP, 
+    UniformGridBirthExpectedTargetsModel, 
+    ZeroMotionPredictorModel, 
+    RightSideGridBirthExpectedTargetsModel,
+    ConstantMotionPredictorModel
+)
 
 ObsType = TypeVar("ObsType")
 ActType = TypeVar("ActType")
@@ -41,8 +47,8 @@ class PatrolEnv(EnvBase):
         super().__init__(device=device,
                          batch_size=batch_size)
         
-        self.width: torch.Tensor = torch.tensor(20, device=self.device)
-        self.height: torch.Tensor = torch.tensor(40, device=self.device)
+        self.width: torch.Tensor = torch.tensor(200, device=self.device)
+        self.height: torch.Tensor = torch.tensor(400, device=self.device)
         self.height_meters = self.height * 10 * 1000
         self.width_meters = self.width * 10 * 1000
         self.loc_scale = torch.tensor([1 / self.height, 1 / self.width], device=self.device) #normalizes x- and y-coordinates to [0, 1]
@@ -55,26 +61,44 @@ class PatrolEnv(EnvBase):
 
         #scenario specifics
         #these are constant across time and batch so just create one of each.
-        self.ps = torch.tensor(0.99, device = self.device)
+        self.ps = torch.tensor(0.995, device = self.device)
         self.pd = torch.tensor(0.9, device = self.device)
         model_batch_size = torch.Size([])
         if len(self.batch_size) > 0:
             self.ps = self.ps.unsqueeze(0)
             self.pd = self.pd.unsqueeze(0)
             model_batch_size = torch.Size([1])
-        self.birth_expected_targets_model = UniformGridBirthExpectedTargetsModel(torch.tensor(0.1, 
+        # self.birth_expected_targets_model = UniformGridBirthExpectedTargetsModel(torch.tensor(0.1, 
+        #                                     device = self.device),                               
+        #                                     batch_size=model_batch_size)
+        
+        self.birth_expected_targets_model = RightSideGridBirthExpectedTargetsModel(torch.tensor(0.1, 
                                             device = self.device),                               
                                             batch_size=model_batch_size)
-        self.motion_predictor_model = ZeroMotionPredictorModel(
+        
+        # self.motion_predictor_model = ZeroMotionPredictorModel(
+        #     self.width_meters / self.width,
+        #     self.height_meters / self.height,
+        #     self.width,
+        #     self.height,
+        #     self.time_step_size,
+        #     self.ps,
+        #     batch_size=model_batch_size,
+        #     device=self.device
+        # )
+        assumed_object_velocity = torch.tensor([-200, 0], dtype=torch.float32, device=self.device)
+        self.motion_predictor_model = ConstantMotionPredictorModel(
             self.width_meters / self.width,
             self.height_meters / self.height,
             self.width,
             self.height,
+            assumed_object_velocity,
             self.time_step_size,
             self.ps,
             batch_size=model_batch_size,
             device=self.device
         )
+        
         ## the end.
           
         self.grid_ppp = GridPPP(

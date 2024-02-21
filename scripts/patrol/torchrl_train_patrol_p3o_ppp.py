@@ -32,7 +32,6 @@ from torchrl.envs import ExplorationType, set_exploration_type
 from envs.grid.patrol_env_ppp import PatrolEnv
 from torchrl.objectives import KLPENPPOLoss
 
-
 from utils_p3o_ppp import make_p3o_models, make_parallel_env, eval_model
 
 @hydra.main(config_path=".", config_name="config_p3o", version_base="1.1")

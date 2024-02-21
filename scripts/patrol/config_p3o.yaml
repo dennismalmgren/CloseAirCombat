@@ -1,11 +1,11 @@
 # Environment
 env:
   env_name: PatrolEnvGrid
-  num_envs: 100
+  num_envs: 1024
 
 # collector
 collector:
-  frames_per_batch: 3_000
+  frames_per_batch: 16384
   total_frames: 100_000_000
 
 # logger
@@ -16,7 +16,7 @@ logger:
   exp_name: PPO
   test_interval: 100_000
   num_test_episodes: 1
-  mode: disabled  
+  mode: online  
 
 # Optim
 optim:
@@ -28,8 +28,8 @@ optim:
 
 # loss
 loss:
-  gamma: 0.999
-  mini_batch_size: 1000
+  gamma: 0.99
+  mini_batch_size: 8192
   ppo_epochs: 5
   gae_lambda: 0.95
   clip_epsilon: 0.2

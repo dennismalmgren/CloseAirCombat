@@ -35,7 +35,7 @@ class UniformGridBirthExpectedTargetsModel(GridBirthExpectedTargetsModel):
             grid.fill_(0)
             grid += self.expected_targets_per_area_and_timestep
 
-class RightSideGridBirthxpectedTargetsModel(GridBirthExpectedTargetsModel):
+class RightSideGridBirthExpectedTargetsModel(GridBirthExpectedTargetsModel):
     def __init__(self,
                  expected_targets_per_area_and_timestep: torch.Tensor,
                  batch_size = torch.Size([])):
@@ -157,7 +157,17 @@ class ConstantMotionPredictorModel(MotionPredictionModel):
                 t: int,
                 grid_current_expected_targets: torch.Tensor,
                 grid_birth_expected_targets: torch.Tensor):
-        grid_current_expected_targets = grid_birth_expected_targets + self.conv2d_layer(grid_current_expected_targets)
+        
+        if len(self.batch_size) == 0:
+            grid_current_expected_targets = grid_current_expected_targets.unsqueeze(0)
+        
+        grid_current_expected_targets = grid_current_expected_targets.unsqueeze(1)
+
+        grid_current_expected_targets = self.conv2d_layer(grid_current_expected_targets)
+        grid_current_expected_targets = grid_current_expected_targets.squeeze(1)
+        if len(self.batch_size) == 0:
+            grid_current_expected_targets = grid_current_expected_targets.squeeze(0)
+        grid_current_expected_targets = grid_birth_expected_targets + grid_current_expected_targets        
         return grid_current_expected_targets
     
 class GridPPP:
@@ -217,8 +227,8 @@ class GridPPP:
         self.device = device
         self.H = H
         self.W = W
-        self.height_meters = torch.tensor(height_meters, device=device)
-        self.width_meters = torch.tensor(width_meters, device=device)
+        self.height_meters =height_meters
+        self.width_meters = width_meters
         self.cell_height = self.height_meters / self.H
         self.cell_width = self.width_meters / self.W
         self.cell_w = torch.arange(0, self.W, dtype = torch.float32, device = self.device) + 0.5
