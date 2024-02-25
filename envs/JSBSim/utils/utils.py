@@ -25,6 +25,32 @@ def parse_config(filename):
 def get_root_dir():
     return os.path.join(os.path.split(os.path.realpath(__file__))[0], '..')
 
+def LLA2NED(lat, lon, alt, lat0=60.0, lon0=120.0, alt0=0):
+    """Convert from Geodetic Coordinate System to NEU Coordinate System.
+
+    Args:
+        lat, lon, alt (float): target latitude(°), geodetic longitude(°), altitude(m)
+        lat, lon, alt (float): observer latitude(°), geodetic longitude(°), altitude(m); Default=`(60°N, 120°E, 0m)`
+
+    Returns:
+        (np.array): (North, East, Down), unit: m
+    """
+    n, e, d = pymap3d.geodetic2ned(lat, lon, alt, lat0, lon0, alt0)
+    return np.array([n, e, d])
+
+def NED2LLA(n, e, d, lat0=60.0, lon0=120.0, alt0=0):
+    """Convert from NEU Coordinate System to Geodetic Coordinate System.
+
+    Args:
+        n, e, d (float): target relative position w.r.t. North, East, Down
+        lat, lon, alt (float): observer geodetic longitude(°), latitude(°), altitude(m); Default=`(60°N, 120°E, 0m)`
+
+    Returns:
+        (np.array): (lat, lon, alt), unit: °, °, m
+    """
+    lat, lon, h = pymap3d.ned2geodetic(n, e, d, lat0, lon0, alt0)
+    return np.array([lat, lon, h])
+
 
 def LLA2NEU(lon, lat, alt, lon0=120.0, lat0=60.0, alt0=0):
     """Convert from Geodetic Coordinate System to NEU Coordinate System.

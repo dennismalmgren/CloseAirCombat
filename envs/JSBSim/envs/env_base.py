@@ -27,8 +27,8 @@ class BaseEnv(gym.Env):
         self.max_steps = getattr(self.config, 'max_steps', 100)  # type: int
         self.sim_freq = getattr(self.config, 'sim_freq', 60)  # type: int
         self.agent_interaction_steps = getattr(self.config, 'agent_interaction_steps', 12)  # type: int
-        self.center_lon, self.center_lat, self.center_alt = \
-            getattr(self.config, 'battle_field_center', (120.0, 60.0, 0.0))
+        self.center_lat, self.center_lon, self.center_alt = \
+            getattr(self.config, 'battle_field_origin', (120.0, 60.0, 0.0))
         self._create_records = False
         self.dict_spaces = dict_spaces
         self.load()
@@ -74,7 +74,7 @@ class BaseEnv(gym.Env):
                 color=config.get("color", "Red"),
                 model=config.get("model", "f16"),
                 init_state=config.get("init_state"),
-                origin=getattr(self.config, 'battle_field_center', (120.0, 60.0, 0.0)),
+                origin=getattr(self.config, 'battle_field_origin', (60.0, 120.0, 0.0)),
                 sim_freq=self.sim_freq,
                 num_missiles=config.get("missile", 0))
         # Different teams have different uid[0]
@@ -166,7 +166,6 @@ class BaseEnv(gym.Env):
             reward, info = self.task.get_reward(self, agent_id, info)
             
             rewards[agent_id] = [reward]
-            info['cruise_missile_event_reward'] = info["cruise_missile_event_reward"] #todo: move all keys
         if self.dict_spaces:
             return obs, rewards, terminations, truncations, info
         else:

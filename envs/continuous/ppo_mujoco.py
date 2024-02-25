@@ -9,7 +9,7 @@ results from Schulman et al. 2017 for the on MuJoCo Environments.
 """
 import hydra
 from torchrl._utils import logger as torchrl_logger
-
+from torchrl.collectors.utils import split_trajectories
 
 @hydra.main(config_path=".", config_name="config_mujoco", version_base="1.1")
 def main(cfg: "DictConfig"):  # noqa: F821
@@ -22,12 +22,13 @@ def main(cfg: "DictConfig"):  # noqa: F821
     from tensordict import TensorDict
     from torchrl.collectors import SyncDataCollector
     from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
-    from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
+    from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement, SliceSampler
     from torchrl.envs import ExplorationType, set_exploration_type
     from torchrl.objectives import ClipPPOLoss
     from torchrl.objectives.value.advantages import GAE
     from torchrl.record.loggers import generate_exp_name, get_logger
     from utils_mujoco import eval_model, make_env, make_ppo_models
+    from seq_utils import split_trajectories_pad_left, OnlineSliceSampler
 
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     num_mini_batches = cfg.collector.frames_per_batch // cfg.loss.mini_batch_size
@@ -53,11 +54,12 @@ def main(cfg: "DictConfig"):  # noqa: F821
     )
 
     # Create data buffer
-    sampler = SamplerWithoutReplacement()
+    slice_len = 15
+    sampler = OnlineSliceSampler(slice_len=slice_len, strict_length=False)
     data_buffer = TensorDictReplayBuffer(
         storage=LazyMemmapStorage(cfg.collector.frames_per_batch),
         sampler=sampler,
-        batch_size=cfg.loss.mini_batch_size,
+        batch_size=cfg.loss.mini_batch_size * slice_len,
     )
 
     # Create loss and adv modules
@@ -94,6 +96,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 "config": dict(cfg),
                 "project": cfg.logger.project_name,
                 "group": cfg.logger.group_name,
+                "mode": "disabled"
             },
         )
 
@@ -151,6 +154,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             data_buffer.extend(data_reshape)
 
             for k, batch in enumerate(data_buffer):
+                batch_traj = split_trajectories_pad_left(batch, slice_len=15)
 
                 # Get a data batch
                 batch = batch.to(device)
