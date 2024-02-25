@@ -41,6 +41,7 @@ from torchrl.modules import (
     TanhNormal,
     ValueOperator,
 )
+from tensordict.nn import AddStateIndependentNormalScale
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
@@ -67,7 +68,7 @@ def apply_env_transforms(env):# max_episode_steps=1000):
             DoubleToFloat(),
             RewardScaling(loc=0.0, scale=0.1),
             RewardSum(),
-            CatFrames(5, dim=-1, in_keys=['observation'])
+            #CatFrames(5, dim=-1, in_keys=['observation'])
         ),
     )
     return transformed_env
@@ -189,62 +190,89 @@ def make_replay_buffer(
 # ====================================================================
 # Model
 # -----
-def make_ppo_modules(cfg, eval_env):
-    #begin by using separate nets for value and policy. easier.
-    in_keys = ["observation"]
-    action_spec = eval_env.action_spec
-    if eval_env.batch_size:
-        action_spec = action_spec[(0,) * len(eval_env.batch_size)]
+def make_ppo_modules(cfg, proof_environment):
+    input_shape = proof_environment.observation_spec["observation"].shape
+    
+    # Define policy output distribution class
+    num_outputs = proof_environment.action_spec.shape[-1]
+    distribution_class = TanhNormal
+    distribution_kwargs = {
+        "min": proof_environment.action_spec.space.low,
+        "max": proof_environment.action_spec.space.high,
+        "tanh_loc": False,
+    }
 
-    num_outputs = eval_env.action_spec.space.n
-    distribution_class = OneHotCategorical
-    distribution_kwargs = {}
-    policy_net_kwargs = {
-        "num_cells": cfg.network.hidden_sizes,
-        "out_features": num_outputs,
-        "activation_class": get_activation(cfg),
-    }   
-
-    policy_net = MLP(**policy_net_kwargs)
-
-    policy_module = TensorDictModule(
-        module = policy_net,
-        in_keys=in_keys,
-        out_keys=["logits"]
+    # Define policy architecture
+    policy_mlp = MLP(
+        in_features=input_shape[-1],
+        activation_class=torch.nn.Tanh,
+        out_features=num_outputs,  # predict only loc
+        num_cells=cfg.network.hidden_sizes,
     )
 
+    # Initialize policy weights
+    for layer in policy_mlp.modules():
+        if isinstance(layer, torch.nn.Linear):
+            torch.nn.init.orthogonal_(layer.weight, 1.0)
+            layer.bias.data.zero_()
+
+    # Add state-independent normal scale
+    policy_mlp = torch.nn.Sequential(
+        policy_mlp,
+        AddStateIndependentNormalScale(
+            proof_environment.action_spec.shape[-1], scale_lb=1e-8
+        ),
+    )
+
+    # Add probabilistic sampling of the actions
     policy_module = ProbabilisticActor(
-        policy_module,
-        in_keys=["logits"],
-        spec=CompositeSpec(action=eval_env.action_spec),
-        distribution_class = distribution_class,
-        distribution_kwargs = distribution_kwargs,
+        TensorDictModule(
+            module=policy_mlp,
+            in_keys=["observation"],
+            out_keys=["loc", "scale"],
+        ),
+        in_keys=["loc", "scale"],
+        spec=CompositeSpec(action=proof_environment.action_spec),
+        distribution_class=distribution_class,
+        distribution_kwargs=distribution_kwargs,
         return_log_prob=True,
-        default_interaction_type=InteractionType.RANDOM,
+        default_interaction_type=ExplorationType.RANDOM,
     )
 
-    value_net = MLP(
-        activation_class=torch.nn.ReLU,
-        out_features = 1,
-        num_cells = cfg.network.hidden_sizes,
+    # Define value architecture
+    value_mlp = MLP(
+        in_features=input_shape[-1],
+        activation_class=torch.nn.Tanh,
+        out_features=1,
+        num_cells=[64, 64],
     )
 
+    # Initialize value weights
+    for layer in value_mlp.modules():
+        if isinstance(layer, torch.nn.Linear):
+            torch.nn.init.orthogonal_(layer.weight, 0.01)
+            layer.bias.data.zero_()
+    
+    # Define value module
     value_module = ValueOperator(
-        module = value_net,
-        in_keys=in_keys,
+        value_mlp,
+        in_keys=["observation"],
     )
 
     return policy_module, value_module
 
-def make_ppo_models(cfg, eval_env):
+def make_ppo_models(cfg, eval_env, device):
     policy_module, value_module = make_ppo_modules(
         cfg, eval_env
     )
-    
+    policy_module = policy_module.to(device)
+    value_module = value_module.to(device)
     with torch.no_grad():
         td = eval_env.reset()
+        td = td.to(device)
         td = policy_module(td)
         td = value_module(td)
+        td = td.to("cpu")
 
     return policy_module, value_module
 
