@@ -207,12 +207,12 @@ def main(cfg: "DictConfig"):  # noqa: F821
             # Compute GAE
             with torch.no_grad():
                 data = adv_module(data.to(device, non_blocking=True))
-            data_reshape = data.reshape(-1)
+            data = data.reshape(-1)
             # Update the data buffer
             #data_buffer.extend(data_reshape)
             for batch_id in range(num_mini_batches):
                 k = batch_id
-                batch = data_reshape[batch_id * mini_batch_size : (batch_id + 1) * mini_batch_size]
+                batch = data[batch_id * mini_batch_size : (batch_id + 1) * mini_batch_size]
         #    for k, batch in enumerate(data_buffer):
         #         # Linearly decrease the learning rate and clip epsilon
                 alpha = 1.0
@@ -249,7 +249,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 # Update the networks
                 optim.step()
                 optim.zero_grad()
-
+        del data
         # Get training losses and times
         training_time = time.time() - training_start
         losses_mean = losses.apply(lambda x: x.float().mean(), batch_size=[])

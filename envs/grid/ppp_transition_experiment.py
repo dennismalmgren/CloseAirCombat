@@ -184,7 +184,6 @@ def main():
     #this means cells are 1000 by 1000 m.
     width = 200
     height = 400
-
     cell_width = 1000.0
     cell_height = 1000.0
     vehicle_speed = 200 #m / sec. 

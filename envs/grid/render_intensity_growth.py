@@ -94,7 +94,7 @@ def main():
     #birth rate
     br = 0.1
     #survivability rate
-    ps = 0.99
+    ps = 0.995
     #total time
     T = 1000
     expected_limit = br / (1 - ps)
