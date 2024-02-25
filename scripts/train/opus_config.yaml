@@ -9,45 +9,26 @@ env:
   exp_name: ${env.name}_OPUS
   max_episode_steps: 1000
   seed: 42
+  reward_scaling: 0.01
+  frame_skip: 1
+  from_pixels: false
 
 # Logger
 logger:
   backend: wandb
   mode: online
-  eval_iter: 100_000
+  eval_iter: 10_000
+  exp_name: opus_heading
 
-exp_name: opus_heading
-record_interval: 500
-# Environment
-env_name: opus/opus_training
-frame_skip: 1
-from_pixels: false
-reward_scaling: 1.0
-init_env_steps: 0
-seed: 42
-
-# Collector
-env_per_collector: 1
-max_frames_per_traj: 1000
-init_random_frames: 10000
-frames_per_batch: 1000 # max_frames_per_traj * env_per_collector
-
-# Replay Buffer
-prb: 0
-buffer_size: 100_000
+random:
+  seed: 42
 
 # Optimization
-utd_ratio: 1.0
-gamma: 0.99
-batch_size: 256
-lr: 3.0e-4
-weight_decay: 0.0
-target_update_polyak: 0.995
-target_entropy_weight: 0.2
+#target_entropy_weight: 0.2
 # default is 0.98 but needs to be decreased for env
 # with small action space
 train:
-  save_interval: 100000
+  save_interval: 100_000
 
 device: cuda:0
 # optim
@@ -61,15 +42,15 @@ optim:
   target_update_polyak: 0.995
   alpha_init: 1.0
   adam_eps: 1.0e-8
+  max_grad_norm: 10.0
 
 # collector
 collector:
   total_frames: 1_000_000
-  init_random_frames: 0
-  frames_per_batch: 1000
+  init_random_frames: 1000
+  frames_per_batch: 1000 #max_episode_steps * env_per_collector
   device: cpu
-  env_per_collector: 1
-  reset_at_each_iter: False
+  env_per_collector: 5
 
 network:
   hidden_sizes: [256, 256]
@@ -80,6 +61,6 @@ network:
 
 # replay buffer
 replay_buffer:
-  size: 100000
+  size: 1_000_000
   prb: 0 # use prioritized experience replay
   scratch_dir: ${env.exp_name}_${env.seed}
