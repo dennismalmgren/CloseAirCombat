@@ -15,6 +15,7 @@ class BaseTask(ABC):
         self.config = config
         self.reward_functions = []
         self.termination_conditions = []
+        self.curriculum = None
         self.load_variables()
         self.load_observation_space()
         self.load_action_space()
@@ -59,6 +60,9 @@ class BaseTask(ABC):
         """
         for reward_function in self.reward_functions:
             reward_function.reset(self, env)
+            
+        if self.curriculum is not None:
+            self.curriculum.reset(self, env)
 
     def step(self, env):
         """ Task-specific step
@@ -86,7 +90,6 @@ class BaseTask(ABC):
         for reward_function in self.reward_functions:
             func_reward = reward_function.get_reward(self, env, agent_id)
             reward += func_reward
-            info["cruise_missile_event_reward"] = func_reward
         return reward, info
     
     def get_truncation(self, env, agent_id, info={}) -> Tuple[bool, dict]:

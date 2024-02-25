@@ -21,6 +21,8 @@ class JsbsimCatalog(Property, Enum):
     # position and attitude
 
     position_h_sl_ft = Property("position/h-sl-ft", "altitude above mean sea level [ft]", -1400, 85000)
+    atmosphere_crosswind_fps = Property("atmosphere/crosswind-fps", "fps", -100, 100, access="R")
+    atmosphere_headwind_fps = Property("atmosphere/headwind-fps", "fps", -100, 100, access="R")
     position_h_agl_ft = Property(
         "position/h-agl-ft", "altitude above ground level [ft]", position_h_sl_ft.min, position_h_sl_ft.max
     )
@@ -288,13 +290,43 @@ class ExtraCatalog(Property, Enum):
     """
 
     # state in other formats
-
+    accelerations_udot_m_sec2 = Property("accelerations/udot-m_sec2", "m/s²", -4.0, 4.0, access="R",
+                                            update=lambda sim: sim.set_property_value(
+                                                ExtraCatalog.accelerations_udot_m_sec2,
+                                                sim.get_property_value(JsbsimCatalog.accelerations_udot_ft_sec2) * 0.3048
+                                            )
+                                            )
+    accelerations_vdot_m_sec2 = Property("accelerations/vdot-m_sec2", "m/s²", -4.0, 4.0, access="R",
+                                         update=lambda sim: sim.set_property_value(
+                                             ExtraCatalog.accelerations_vdot_m_sec2,
+                                             sim.get_property_value(JsbsimCatalog.accelerations_vdot_ft_sec2) * 0.3048
+                                         )
+                                         )
+    accelerations_wdot_m_sec2 = Property("accelerations/wdot-m_sec2", "m/s²", -4.0, 4.0, access="R",
+                                            update=lambda sim: sim.set_property_value(
+                                                ExtraCatalog.accelerations_wdot_m_sec2,
+                                                sim.get_property_value(JsbsimCatalog.accelerations_wdot_ft_sec2) * 0.3048
+                                            )
+                                            )
+    
     position_h_sl_m = Property(
         "position/h-sl-m", "altitude above mean sea level [m]", -500, 26000, access="R",
         update=lambda sim: sim.set_property_value(
             ExtraCatalog.position_h_sl_m,
             sim.get_property_value(JsbsimCatalog.position_h_sl_ft) * 0.3048))
+    
+    atmosphere_crosswind_mps = Property(
+        "atmosphere/crosswind-mps", "crosswind [m/s]", -100, 100, access="R",
+        update=lambda sim: sim.set_property_value(
+            ExtraCatalog.atmosphere_crosswind_mps,
+            sim.get_property_value(JsbsimCatalog.atmosphere_crosswind_fps) * 0.3048))
 
+    atmosphere_headwind_mps = Property(
+        "atmosphere/headwind-mps", "headwind [m/s]", -100, 100, access="R",
+        update=lambda sim: sim.set_property_value(
+            ExtraCatalog.atmosphere_headwind_mps,
+            sim.get_property_value(JsbsimCatalog.atmosphere_headwind_fps) * 0.3048))
+    
     velocities_v_north_mps = Property(
         "velocities/v-north-mps", "velocity true north [m/s]", -700, 700, access="R",
         update=lambda sim: sim.set_property_value(
@@ -496,26 +528,408 @@ class ExtraCatalog(Property, Enum):
         update=update_detect_extreme_state,
     )
 
-    # target conditions
+    # Assignment variables
+    # Current options:
+    # 0: no mission (not used),
+    # 1: travel in heading at altitude and speed
+    # 2: travel to waypoint
+    # 3: search area
+    # 4: engage target
+    # Assignments can be given in sequence (2 in a row)
+    # such as task 1 = 1, task 2 = 2. 
+    task_1_type_id = Property(
+        "missions/task_1_type_id",
+        "task 1 type id",
+        0,
+        4,
+        spaces=Discrete
+    )
 
+    task_2_type_id = Property(
+        "missions/task_1_type_id",
+        "task 1 type id",
+        0,
+        4,
+        spaces=Discrete
+    )
+
+    #Travel in direction at altitude
+    travel_1_target_position_h_sl_m = Property(
+        "missions/travel-1-target-position-h-sl-m",
+        "target altitude MSL [m]",
+        JsbsimCatalog.position_h_sl_ft.min * 0.3048,
+        JsbsimCatalog.position_h_sl_ft.max * 0.3048,
+    )
+
+    travel_1_target_attitude_psi_rad = Property(
+        "missions/travel-1-target-attitude-psi-rad",
+        "target heading [rad]",
+        JsbsimCatalog.attitude_psi_rad.min,
+        JsbsimCatalog.attitude_psi_rad.max,
+    )
+
+    travel_1_target_velocities_u_mps = Property(
+        "missions/travel-1-target-velocity-u-mps",
+        "target speed [mps]",
+        -700,
+        700
+    )
+
+    travel_1_target_time_s = Property(
+        "missions/travel-2-target-time-sec",
+        "target time [sec]",
+        0
+    )
+
+    travel_2_target_position_h_sl_m = Property(
+        "missions/travel-2-target-position-h-sl-m",
+        "target altitude MSL [m]",
+        JsbsimCatalog.position_h_sl_ft.min * 0.3048,
+        JsbsimCatalog.position_h_sl_ft.max * 0.3048,
+    )
+
+    travel_2_target_attitude_psi_rad = Property(
+        "missions/travel-2-target-attitude-psi-rad",
+        "target heading [rad]",
+        JsbsimCatalog.attitude_psi_rad.min,
+        JsbsimCatalog.attitude_psi_rad.max,
+    )
+
+    travel_2_target_velocities_u_mps = Property(
+        "missions/travel-2-target-velocity-u-mps",
+        "target speed [mps]",
+        -700,
+        700
+    )
+
+    travel_2_target_time_s = Property(
+        "missions/travel-2-target-time-sec",
+        "target time [sec]",
+        0
+    )
+
+    #travel to waypoint
+    wp_1_1_target_position_h_sl_m = Property(
+        "missions/wp-1-1-target-position-h-sl-m",
+        "target altitude MSL [m]",
+        JsbsimCatalog.position_h_sl_ft.min * 0.3048,
+        JsbsimCatalog.position_h_sl_ft.max * 0.3048,
+    )
+
+    wp_1_1_target_position_lat_geod_rad = Property(
+        "missions/wp-1-1-target-position-lat-geod-rad",
+        "target geodesic latitude [rad]",
+        JsbsimCatalog.position_lat_geod_rad.min,
+        JsbsimCatalog.position_lat_geod_rad.max,
+    )
+
+    wp_1_1_target_position_long_gc_rad = Property(
+        "missions/wp-1-1-target-position-lat-geod-rad",
+        "target geocentric (geodesic) longitude [rad]",
+        JsbsimCatalog.position_lat_geod_rad.min,
+        JsbsimCatalog.position_lat_geod_rad.max,
+    )
+
+    wp_1_1_target_velocities_v_north_mps = Property(
+        "missions/wp-1-1-target-velocity-v-north-mps",
+        "target velocity true north [mps]",
+        -700,
+        700
+    )
+
+    wp_1_1_target_velocities_v_east_mps = Property(
+        "missions/wp-1-1-target-velocity-v-east-mps",
+        "target velocity east [mps]",
+        -700,
+        700
+    )
+
+    wp_1_1_target_velocities_v_down_mps = Property(
+        "missions/wp-1-1-target-velocity-v-down-mps",
+        "target velocity downwards [mps]",
+        -700,
+        700
+    )
+
+    wp_1_1_target_time_s = Property(
+        "missions/wp-1-1-target-time-sec",
+        "target time [sec]",
+        0
+    )
+
+    wp_1_2_target_position_h_sl_m = Property(
+        "missions/wp-1-2-target-position-h-sl-m",
+        "target altitude MSL [m]",
+        JsbsimCatalog.position_h_sl_ft.min * 0.3048,
+        JsbsimCatalog.position_h_sl_ft.max * 0.3048,
+    )
+
+    wp_1_2_target_position_lat_geod_rad = Property(
+        "missions/wp-1-2-target-position-lat-geod-rad",
+        "target geodesic latitude [rad]",
+        JsbsimCatalog.position_lat_geod_rad.min,
+        JsbsimCatalog.position_lat_geod_rad.max,
+    )
+
+    wp_1_2_target_position_long_gc_rad = Property(
+        "missions/wp-1-2-target-position-lat-geod-rad",
+        "target geocentric (geodesic) longitude [rad]",
+        JsbsimCatalog.position_lat_geod_rad.min,
+        JsbsimCatalog.position_lat_geod_rad.max,
+    )
+
+    wp_1_2_target_velocities_v_north_mps = Property(
+        "missions/wp-1-2-target-velocity-v-north-mps",
+        "target velocity true north [mps]",
+        -700,
+        700
+    )
+
+    wp_1_2_target_velocities_v_east_mps = Property(
+        "missions/wp-1-2-target-velocity-v-east-mps",
+        "target velocity east [mps]",
+        -700,
+        700
+    )
+
+    wp_1_2_target_velocities_v_down_mps = Property(
+        "missions/wp-1-2-target-velocity-v-down-mps",
+        "target velocity downwards [mps]",
+        -700,
+        700
+    )
+
+    wp_1_2_target_time_s = Property(
+        "missions/wp-1-2-target-time-sec",
+        "target time [sec]",
+        0
+    )
+    
+    wp_2_1_target_position_h_sl_m = Property(
+        "missions/wp-2-1-target-position-h-sl-m",
+        "target altitude MSL [m]",
+        JsbsimCatalog.position_h_sl_ft.min * 0.3048,
+        JsbsimCatalog.position_h_sl_ft.max * 0.3048,
+    )
+
+    wp_2_1_target_position_lat_geod_rad = Property(
+        "missions/wp-2-1-target-position-lat-geod-rad",
+        "target geodesic latitude [rad]",
+        JsbsimCatalog.position_lat_geod_rad.min,
+        JsbsimCatalog.position_lat_geod_rad.max,
+    )
+
+    wp_2_1_target_position_long_gc_rad = Property(
+        "missions/wp-2-1-target-position-lat-geod-rad",
+        "target geocentric (geodesic) longitude [rad]",
+        JsbsimCatalog.position_lat_geod_rad.min,
+        JsbsimCatalog.position_lat_geod_rad.max,
+    )
+
+    wp_2_1_target_velocities_v_north_mps = Property(
+        "missions/wp-2-1-target-velocity-v-north-mps",
+        "target velocity true north [mps]",
+        -700,
+        700
+    )
+
+    wp_2_1_target_velocities_v_east_mps = Property(
+        "missions/wp-2-1-target-velocity-v-east-mps",
+        "target velocity east [mps]",
+        -700,
+        700
+    )
+
+    wp_2_1_target_velocities_v_down_mps = Property(
+        "missions/wp-2-1-target-velocity-v-down-mps",
+        "target velocity downwards [mps]",
+        -700,
+        700
+    )
+
+    wp_2_1_target_time_s = Property(
+        "missions/wp-2-1-target-time-sec",
+        "target time [sec]",
+        0
+    )
+
+    wp_2_2_target_position_h_sl_m = Property(
+        "missions/wp-2-2-target-position-h-sl-m",
+        "target altitude MSL [m]",
+        JsbsimCatalog.position_h_sl_ft.min * 0.3048,
+        JsbsimCatalog.position_h_sl_ft.max * 0.3048,
+    )
+
+    wp_2_2_target_position_lat_geod_rad = Property(
+        "missions/wp-2-2-target-position-lat-geod-rad",
+        "target geodesic latitude [rad]",
+        JsbsimCatalog.position_lat_geod_rad.min,
+        JsbsimCatalog.position_lat_geod_rad.max,
+    )
+
+    wp_2_2_target_position_long_gc_rad = Property(
+        "missions/wp-2-2-target-position-lat-geod-rad",
+        "target geocentric (geodesic) longitude [rad]",
+        JsbsimCatalog.position_lat_geod_rad.min,
+        JsbsimCatalog.position_lat_geod_rad.max,
+    )
+
+    wp_2_2_target_velocities_v_north_mps = Property(
+        "missions/wp-2-2-target-velocity-v-north-mps",
+        "target velocity true north [mps]",
+        -700,
+        700
+    )
+
+    wp_2_2_target_velocities_v_east_mps = Property(
+        "missions/wp-2-2-target-velocity-v-east-mps",
+        "target velocity east [mps]",
+        -700,
+        700
+    )
+
+    wp_2_2_target_velocities_v_down_mps = Property(
+        "missions/wp-2-2-target-velocity-v-down-mps",
+        "target velocity downwards [mps]",
+        -700,
+        700
+    )
+
+    wp_2_2_target_time_s = Property(
+        "missions/wp-2-2-target-time-sec",
+        "target time [sec]",
+        0
+    )
+
+    #search area
+    search_area_1_x1_grid = Property(
+        "missions/search-area-x-1-grid",
+        "search area grid x1 coordinate",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    search_area_1_y1_grid = Property(
+        "missions/search-area-y-1-grid",
+        "search area grid y1 coordinate",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    search_area_1_x2_grid = Property(
+        "missions/search-area-x-2-grid",
+        "search area grid x2 coordinate",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    search_area_1_y2_grid = Property(
+        "missions/search-area-y-2-grid",
+        "search area grid y2 coordinate",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    search_area_1_target_time_s = Property(
+        "missions/search-area-1-target-time-sec",
+        "target time [sec]",
+        0
+    )
+
+    search_area_2_x1_grid = Property(
+        "missions/search-area-x-1-grid",
+        "search area grid x1 coordinate",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    search_area_2_y1_grid = Property(
+        "missions/search-area-y-1-grid",
+        "search area grid y1 coordinate",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    search_area_2_x2_grid = Property(
+        "missions/search-area-x-2-grid",
+        "search area grid x2 coordinate",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    search_area_2_y2_grid = Property(
+        "missions/search-area-y-2-grid",
+        "search area grid y2 coordinate",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    search_area_2_target_time_s = Property(
+        "missions/search-area-2-target-time-sec",
+        "target time [sec]",
+        0
+    )
+
+    #engage target
+    akan_destroy_1_target_id = Property(
+        "missions/akan-destroy-1-target-id",
+        "target id",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    akan_destroy_1_target_time_s = Property(
+        "missions/akan-destroy-1-target-time-sec",
+        "target time [sec]",
+        0
+    )
+
+    akan_destroy_2_target_id = Property(
+        "missions/akan-destroy-2-target-id",
+        "target id",
+        0,
+        1000,
+        spaces=Discrete
+    )
+
+    akan_destroy_2_target_time_s = Property(
+        "missions/akan-destroy-2-target-time-sec",
+        "target time [sec]",
+        0
+    )
+
+    ### OLD VARIABLES
     target_altitude_ft = Property(
         "tc/h-sl-ft",
         "target altitude MSL [ft]",
         JsbsimCatalog.position_h_sl_ft.min,
         JsbsimCatalog.position_h_sl_ft.max,
     )
+
     target_heading_deg = Property(
         "tc/target-heading-deg",
         "target heading [deg]",
         JsbsimCatalog.attitude_psi_deg.min,
         JsbsimCatalog.attitude_psi_deg.max,
     )
+
     target_velocities_u_mps = Property(
         "tc/target-velocity-u-mps",
         "target heading [mps]",
         -700,
         700
     )
+
+
     target_vg = Property("tc/target-vg", "target ground velocity [ft/s]")
     target_time = Property("tc/target-time-sec", "target time [sec]", 0)
     target_latitude_geod_deg = Property("tc/target-latitude-geod-deg", "target geocentric latitude [deg]", -90, 90)

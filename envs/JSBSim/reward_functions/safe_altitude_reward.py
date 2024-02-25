@@ -2,9 +2,9 @@ import numpy as np
 from .reward_function_base import BaseRewardFunction
 
 
-class AltitudeReward(BaseRewardFunction):
+class SafeAltitudeReward(BaseRewardFunction):
     """
-    AltitudeReward
+    SafeAltitudeReward
     Punish if current fighter doesn't satisfy some constraints. Typically negative.
     - Punishment of velocity when lower than safe altitude   (range: [-1, 0])
     - Punishment of altitude when lower than danger altitude (range: [-1, 0])
@@ -27,13 +27,13 @@ class AltitudeReward(BaseRewardFunction):
         Returns:
             (float): reward
         """
-        ego_z = env.agents[agent_id].get_position()[-1] / 1000    # unit: km
-        ego_vz = env.agents[agent_id].get_velocity()[-1] / 340    # unit: mh
+        ego_z_neu = -env.agents[agent_id].get_position()[-1] / 1000    # unit: km
+        ego_vz_neu = -env.agents[agent_id].get_velocity()[-1] / 340    # unit: mach
         Pv = 0.
-        if ego_z <= self.safe_altitude:
-            Pv = -np.clip(ego_vz / self.Kv * (self.safe_altitude - ego_z) / self.safe_altitude, 0., 1.)
+        if ego_z_neu <= self.safe_altitude:
+            Pv = -np.clip(ego_vz_neu / self.Kv * (self.safe_altitude - ego_z_neu) / self.safe_altitude, 0., 1.)
         PH = 0.
-        if ego_z <= self.danger_altitude:
-            PH = np.clip(ego_z / self.danger_altitude, 0., 1.) - 1. - 1.
+        if ego_z_neu <= self.danger_altitude:
+            PH = np.clip(ego_z_neu / self.danger_altitude, 0., 1.) - 1. - 1.
         new_reward = Pv + PH
         return self._process(new_reward, agent_id, (Pv, PH))

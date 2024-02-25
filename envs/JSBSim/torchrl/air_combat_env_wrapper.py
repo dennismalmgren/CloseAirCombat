@@ -34,13 +34,14 @@ from envs.JSBSim.envs.singlecontrol_env_cont import SingleControlEnv
 from envs.JSBSim.envs.singlecontrol_env_cont_missile import SingleControlMissileEnv
 from envs.JSBSim.envs.singlecombat_env import SingleCombatEnv
 from envs.JSBSim.envs.multiplecombat_env import MultipleCombatEnv
+from envs.JSBSim.envs import OpusTrainingEnv
 from envs.JSBSim.torchrl.tensor_specs import ConvertibleMultiOneHotDiscreteTensorSpec
 
 __all__ = ["JSBSimWrapper", "JSBSimEnv"]
 
 def is_single_agent_env(env: BaseEnv) -> bool: 
     return isinstance(env, SingleControlEnv) or isinstance(env, SingleCombatEnv) \
-    or isinstance(env, SingleControlMissileEnv)
+    or isinstance(env, SingleControlMissileEnv) or isinstance(env, OpusTrainingEnv)
 
 class JSBSimWrapper(_EnvWrapper):
 
@@ -441,7 +442,6 @@ class JSBSimWrapper(_EnvWrapper):
             source.update({"done": done})
             source.update({"terminated": terminated})
             source.update({"truncated": truncated})
-            source.update({"cruise_missile_event_reward": torch.tensor([info["cruise_missile_event_reward"]])})
             tensordict_out = TensorDict(
                 source = source,
                 batch_size = tensordict.batch_size, 

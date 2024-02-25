@@ -27,7 +27,7 @@ from torchrl.envs.utils import ExplorationType, set_exploration_type
 from torchrl.record.loggers import generate_exp_name, get_logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
-from scripts.train.torchrl_utils import (
+from scripts.train.opus_utils import (
     log_metrics,
     make_collector,
     make_environment,
@@ -38,7 +38,7 @@ from scripts.train.torchrl_utils import (
 )
 
 
-@hydra.main(version_base="1.1", config_path=".", config_name="torchrl_cont_config")
+@hydra.main(version_base="1.1", config_path=".", config_name="opus_config")
 def main(cfg: DictConfig):  # noqa: F821
     device = (
         torch.device("cuda:0")
@@ -49,12 +49,12 @@ def main(cfg: DictConfig):  # noqa: F821
     )
 
     # Create logger
-    exp_name = generate_exp_name("SAC", cfg.exp_name)
+    exp_name = generate_exp_name("OPUS", cfg.exp_name)
     logger = None
     if cfg.logger.backend:
         logger = get_logger(
             logger_type=cfg.logger.backend,
-            logger_name="sac_logging",
+            logger_name="opus_logging",
             experiment_name=exp_name,
             wandb_kwargs={"mode": cfg.logger.mode},
         )

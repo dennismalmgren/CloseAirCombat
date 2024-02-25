@@ -13,7 +13,7 @@ env:
 # Logger
 logger:
   backend: wandb
-  mode: disabled
+  mode: online
   eval_iter: 10000
 
 exp_name: cont_sac_heading

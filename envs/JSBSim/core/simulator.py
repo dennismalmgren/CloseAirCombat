@@ -7,7 +7,7 @@ from typing import Literal, Union, List
 
 import jsbsim
 from .catalog import Property, Catalog
-from ..utils.utils import get_root_dir, LLA2NEU, NEU2LLA
+from ..utils.utils import get_root_dir, LLA2NEU, NEU2LLA, LLA2NED, NED2LLA
 
 TeamColors = Literal["Red", "Blue", "Green", "Violet", "Orange"]
 
@@ -26,7 +26,7 @@ class BaseSimulator(ABC):
         self.__color = color
         self.__dt = dt
         self.model = ""
-        self._geodetic = np.zeros(3)
+        self._geodetic_deg = np.zeros(3)
         self._position = np.zeros(3)
         self._posture = np.zeros(3)
         self._velocity = np.zeros(3)
@@ -44,25 +44,30 @@ class BaseSimulator(ABC):
     def dt(self) -> float:
         return self.__dt
 
-    def get_geodetic(self):
-        """(lontitude, latitude, altitude), unit: °, m"""
-        return self._geodetic
+    def get_geodetic_deg(self):
+        """(latitude, longitude, altitude), unit: °, m"""
+        return self._geodetic_deg
 
     def get_position(self):
-        """(north, east, up), unit: m"""
+        """(north, east, down), unit: m"""
         return self._position
-
+    
+    def get_position_neu(self):
+        """(north, east, up), unit: m"""
+        return self._position_neu
+    
     def get_rpy(self):
         """(roll, pitch, yaw), unit: rad"""
         return self._posture
 
     def get_velocity(self):
-        """(v_north, v_east, v_up), unit: m/s"""
+        """(v_north, v_east, v_down), unit: m/s"""
         return self._velocity
 
     def reload(self):
-        self._geodetic = np.zeros(3)
+        self._geodetic_deg = np.zeros(3)
         self._position = np.zeros(3)
+        self._position_neu = np.zeros(3)
         self._posture = np.zeros(3)
         self._velocity = np.zeros(3)
 
@@ -71,7 +76,7 @@ class BaseSimulator(ABC):
         pass
 
     def log(self):
-        lon, lat, alt = self.get_geodetic()
+        lat, lon, alt = self.get_geodetic_deg()
         roll, pitch, yaw = self.get_rpy() * 180 / np.pi
         log_msg = f"{self.uid},T={lon}|{lat}|{alt}|{roll}|{pitch}|{yaw},"
         log_msg += f"Name={self.model.upper()},"
@@ -99,7 +104,7 @@ class AircraftSimulator(BaseSimulator):
                  color: TeamColors = "Red",
                  model: str = 'f16',
                  init_state: dict = {},
-                 origin: tuple = (120.0, 60.0, 0.0),
+                 origin: tuple = (60.0, 120.0, 0.0),
                  sim_freq: int = 60, **kwargs):
         """Constructor. Creates an instance of JSBSim, loads an aircraft and sets initial conditions.
 
@@ -115,7 +120,7 @@ class AircraftSimulator(BaseSimulator):
         super().__init__(uid, color, 1 / sim_freq)
         self.model = model
         self.init_state = init_state
-        self.lon0, self.lat0, self.alt0 = origin
+        self.lat0, self.lon0, self.alt0 = origin
         self.bloods = 100
         self.__status = AircraftSimulator.ALIVE
         for key, value in kwargs.items():
@@ -181,7 +186,7 @@ class AircraftSimulator(BaseSimulator):
         if new_state is not None:
             self.init_state = new_state
         if new_origin is not None:
-            self.lon0, self.lat0, self.alt0 = new_origin
+            self.lat0, self.lon0, self.alt0 = new_origin
         for key, value in self.init_state.items():
             self.set_property_value(Catalog[key], value)
         success = self.jsbsim_exec.run_ic()
@@ -246,18 +251,21 @@ class AircraftSimulator(BaseSimulator):
 
     def _update_properties(self):
         # update position
-        self._geodetic[:] = self.get_property_values([
-            Catalog.position_long_gc_deg,
+        self._geodetic_deg[:] = self.get_property_values([
             Catalog.position_lat_geod_deg,
+            Catalog.position_long_gc_deg,
             Catalog.position_h_sl_m
         ])
-        self._position[:] = LLA2NEU(*self._geodetic, self.lon0, self.lat0, self.alt0)
+        self._position[:] = LLA2NED(*self._geodetic_deg, self.lat0, self.lon0, self.alt0)
+        self._position_neu[:] = self._position[0], self._position[1], -self._position[2]
+
         # update posture
         self._posture[:] = self.get_property_values([
-            Catalog.attitude_roll_rad,
-            Catalog.attitude_pitch_rad,
-            Catalog.attitude_heading_true_rad,
+            Catalog.attitude_phi_rad,
+            Catalog.attitude_theta_rad,
+            Catalog.attitude_psi_rad,
         ])
+
         # update velocity
         self._velocity[:] = self.get_property_values([
             Catalog.velocities_v_north_mps,
@@ -412,9 +420,9 @@ class MissileSimulator(BaseSimulator):
     def rho(self):
         """Air Density, unit: kg/m^3"""
         # approximate expression
-        return 1.225 * np.exp(-self._geodetic[-1] / 9300)
+        return 1.225 * np.exp(-self._geodetic_deg[-1] / 9300)
         # exact expression (Reference: https://www.cnblogs.com/pathjh/p/9127352.html)
-        rho0, T0, h = 1.225, 288.15, self._geodetic[-1]
+        rho0, T0, h = 1.225, 288.15, self._geodetic_deg[-1]
         if h <= 11000:  # Troposphere
             T = T0 - 0.0065 * h
             return rho0 * (T / T0)**4.25588
@@ -433,8 +441,9 @@ class MissileSimulator(BaseSimulator):
         # inherit kinetic parameters from parent aricraft
         self.parent_aircraft = parent
         self.parent_aircraft.launch_missiles.append(self)
-        self._geodetic[:] = parent.get_geodetic()
+        self._geodetic_deg[:] = parent.get_geodetic_deg()
         self._position[:] = parent.get_position()
+        self._position_neu[:] = parent._position_neu[:]
         self._velocity[:] = parent.get_velocity()
         self._posture[:] = parent.get_rpy()
         self._posture[0] = 0  # missile's roll remains zero
@@ -474,7 +483,7 @@ class MissileSimulator(BaseSimulator):
             # remove missile model
             log_msg = f"-{self.uid}\n"
             # add explosion
-            lon, lat, alt = self.get_geodetic()
+            lat, lon, alt = self.get_geodetic_deg()
             roll, pitch, yaw = self.get_rpy() * 180 / np.pi
             log_msg += f"{self.uid}F,T={lon}|{lat}|{alt}|{roll}|{pitch}|{yaw},"
             log_msg += f"Type=Misc+Explosion,Color={self.color},Radius={self._Rc}"
@@ -513,7 +522,7 @@ class MissileSimulator(BaseSimulator):
         """
         # update position & geodetic
         self._position[:] += self.dt * self.get_velocity()
-        self._geodetic[:] = NEU2LLA(*self.get_position(), self.lon0, self.lat0, self.alt0)
+        self._geodetic_deg[:] = NED2LLA(*self.get_position(), self.lon0, self.lat0, self.alt0)
         # update velocity & posture
         v = np.linalg.norm(self.get_velocity())
         theta, phi = self.get_rpy()[1:]
