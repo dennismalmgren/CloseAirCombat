@@ -10,7 +10,7 @@ class LowAltitude(BaseTerminationCondition):
 
     def __init__(self, config):
         super().__init__(config)
-        self.altitude_limit = getattr(config, 'altitude_limit', 2500)  # unit: m
+        self.altitude_limit = getattr(config, 'altitude_limit', 1500)  # unit: m
 
     def get_termination(self, task, env, agent_id, info={}):
         """

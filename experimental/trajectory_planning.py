@@ -241,6 +241,13 @@ if __name__ == "__main__":
     # 1) "seeing" the delta w.r.t the two phases and 
     # 2) rewarding planar flight during the first phase, followed by low jerk entry during the second phase.
     # then we add the observations necessary for the other tasks.
+
+    #A training scenario is therefore
+    # introduce a 'current task' parameter
+    # add two waypoints as 'missions'. 
+    # 1) single waypoint
+    # this is a follow heading-task followed by meet/hit a location at velocity constraints task.
+    #how do I represent those?
     
     p_and_t = fd.path_and_time()
     print(len(p_and_t))

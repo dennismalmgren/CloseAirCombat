@@ -29,7 +29,7 @@ class OpusTrainingEnv(BaseEnv):
         if self.init_states is None:
             self.init_states = [sim.init_state.copy() for sim in self.agents.values()]
         init_heading_deg = self.np_random.uniform(0., 180.)
-        init_altitude_m = self.np_random.uniform(2000., 9000.)
+        init_altitude_m = self.np_random.uniform(2500., 9000.)
         init_velocities_u_mps = self.np_random.uniform(120., 365.)
         for init_state in self.init_states:
             init_state.update({
