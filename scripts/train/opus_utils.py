@@ -15,6 +15,7 @@ from torchrl.data import TensorDictPrioritizedReplayBuffer, TensorDictReplayBuff
 from torchrl.data.replay_buffers.storages import LazyMemmapStorage
 from torchrl.envs import (
     CatTensors,
+    CatFrames,
     Compose,
     DoubleToFloat,
     EnvCreator,
@@ -66,6 +67,7 @@ def apply_env_transforms(env):# max_episode_steps=1000):
             DoubleToFloat(),
             RewardScaling(loc=0.0, scale=0.1),
             RewardSum(),
+            CatFrames(5, dim=-1, in_keys=['observation'])
         ),
     )
     return transformed_env
