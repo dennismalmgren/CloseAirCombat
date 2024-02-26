@@ -76,7 +76,6 @@ def main(cfg: DictConfig):  # noqa: F821
     actor.load_state_dict(actor_state)
     critic.load_state_dict(critic_state)
    
-
     exp_name = generate_exp_name("OPUS_Render", cfg.logger.exp_name)
     os.mkdir('runs')
     run_dir = 'runs'
