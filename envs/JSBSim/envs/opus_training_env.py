@@ -1,6 +1,7 @@
 from .env_base import BaseEnv
 from ..tasks import OpusTrainingTask
-
+from ..curricula import OpusCurriculum
+from ..core.catalog import Catalog as c
 
 class OpusTrainingEnv(BaseEnv):
     """
@@ -10,7 +11,12 @@ class OpusTrainingEnv(BaseEnv):
         super().__init__(config_name)
         # Env-Specific initialization here!
         assert len(self.agents.keys()) == 1, f"{self.__class__.__name__} only supports 1 aircraft!"
-        self.init_states = None
+        
+        self._init_states = None
+
+    #set by curriculum.
+    def load_curriculum(self):
+        self.curriculum = OpusCurriculum(self.config)
 
     def load_task(self):
         #taskname = getattr(self.config, 'task', None)
@@ -18,25 +24,22 @@ class OpusTrainingEnv(BaseEnv):
 
     def reset(self):
         self.current_step = 0
-        self.reset_simulators()
-        self.heading_turn_counts = 0
+        init_states = self.curriculum.create_init_states(self)
+        self.reset_simulators(init_states)
         self.task.reset(self)
+        self.curriculum.reset(self)
         obs = self.get_obs()
         info = {}
         return self._pack(obs), info
 
-    def reset_simulators(self):
-        if self.init_states is None:
-            self.init_states = [sim.init_state.copy() for sim in self.agents.values()]
-        init_heading_deg = self.np_random.uniform(0., 180.)
-        init_altitude_m = self.np_random.uniform(2500., 9000.)
-        init_velocities_u_mps = self.np_random.uniform(120., 365.)
-        for init_state in self.init_states:
-            init_state.update({
-                'ic_psi_true_deg': init_heading_deg,
-                'ic_h_sl_ft': init_altitude_m / 0.3048,
-                'ic_u_fps': init_velocities_u_mps / 0.3048,
-            })
+    def reset_simulators(self, init_states):
+        if self._init_states is None:
+            self._init_states = [sim.init_state.copy() for sim in self.agents.values()]
+
+        for state_ind, agent_id in enumerate(self.agents.keys()):
+            new_init_state = init_states[agent_id]
+            self._init_states[state_ind].update(new_init_state)
+
         for idx, sim in enumerate(self.agents.values()):
-            sim.reload(self.init_states[idx])
+            sim.reload(self._init_states[idx])
         self._tempsims.clear()

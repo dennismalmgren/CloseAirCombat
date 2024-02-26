@@ -6,3 +6,4 @@ from .heading_reward import HeadingReward
 from .missile_posture_reward import MissilePostureReward
 from .shoot_penalty_reward import ShootPenaltyReward
 from .safe_altitude_reward import SafeAltitudeReward
+from .opus_heading_reward import OpusHeadingReward

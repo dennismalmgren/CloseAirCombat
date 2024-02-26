@@ -232,13 +232,14 @@ def main(cfg: DictConfig):  # noqa: F821
             ) // cfg_logger_test_interval:
                 actor.eval()
                 eval_start = time.time()
-                test_rewards = eval_model(
+                test_rewards, test_lengths = eval_model(
                     actor, eval_env, num_episodes=cfg_logger_num_test_episodes
                 )
                 eval_time = time.time() - eval_start
                 log_info.update(
                     {
                         "eval/reward": test_rewards.mean(),
+                        "eval/episode_length": test_lengths.mean(),
                         "eval/time": eval_time,
                     }
                 )

@@ -12,30 +12,49 @@ class OpusCurriculum(BaseCurriculum):
         uid = list(config.aircraft_configs.keys())[0]
         aircraft_config = config.aircraft_configs[uid]
         self.max_heading_increment = 180 #degrees
-        self.max_altitude_increment = 7000 #feet
+        self.max_altitude_increment = 2000 #m
         self.max_velocities_u_increment = 100 #m/s
         self.check_interval = 30 #seconds
         self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] + [1.0] * 10
+        self.heading_turn_counts = 0
 
-    def reset(self, task, env):
-        pass
-#        for agent_id, agent in env.agents.items():
-            #get state.
-    #   ic_long_gc_deg: 120.0,
-    #   ic_lat_geod_deg: 60.0,
-    #   ic_h_sl_ft: 20000,
+    def get_init_state(self, agent_id):
+        #hack. we know it's only one agent for now..
+        return self.agent_init_states[agent_id]
     
-        #agent = env.agents[agent_]
-        # agent
-        # env.agents[agent_id]set_property_value(self, prop, value):
-        # for key, value in self.init_state.items():
-        #     self.set_property_value(Catalog[key], value)
-        #     'target_heading_deg': init_heading,
-        #         'target_altitude_ft': init_altitude,
-        #         'target_velocities_u_mps': init_velocities_u * 0.3048,
+    def create_init_states(self, env):
+        agent_init_states = dict()
+        for agent_id in env.agents:
+            init_heading_deg = env.np_random.uniform(0., 180.)
+            init_altitude_m = env.np_random.uniform(2500., 9000.)
+            init_velocities_u_mps = env.np_random.uniform(120., 365.)
+
+            agent_init_states[agent_id] = {
+                'ic_psi_true_deg': init_heading_deg,
+                'ic_h_sl_ft': init_altitude_m / 0.3048,
+                'ic_u_fps': init_velocities_u_mps / 0.3048,
+            }
+        return agent_init_states
     
-    def update_task(self, env, agent_id, info= {}):
-        return
+    def reset(self, env):
+        self.heading_turn_counts = 0
+        for agent_id in env.agents:
+            agent = env.agents[agent_id]
+            current_altitude = agent.get_property_value(c.position_h_sl_m)
+            current_heading_rad = agent.get_property_value(c.attitude_heading_true_rad) 
+            current_speed = agent.get_property_value(c.velocities_u_mps) 
+            current_time = agent.get_property_value(c.simulation_sim_time_sec) #will be at least.
+            #also: set task values so that they can be returned by reset.
+            agent.set_property_value(c.current_task_id, 0) #0 or 1. we always go with 0 for now..
+            agent.set_property_value(c.task_1_type_id, 1) #1 for heading, 2 for waypoint.
+            agent.set_property_value(c.task_2_type_id, 0) #0 for no mission.
+            agent.set_property_value(c.travel_1_target_position_h_sl_m, current_altitude)
+            agent.set_property_value(c.travel_1_target_attitude_psi_rad, current_heading_rad)
+            agent.set_property_value(c.travel_1_target_velocities_u_mps, current_speed)
+            agent.set_property_value(c.heading_check_time, (self.check_interval + current_time))    
+            agent.set_property_value(c.travel_1_target_time_s, (self.check_interval + current_time))
+            
+    def step(self, env, agent_id, info= {}):
         """
         Return whether the episode should terminate.
         End up the simulation if the aircraft didn't reach the target heading in limited time.
@@ -47,37 +66,38 @@ class OpusCurriculum(BaseCurriculum):
         Returns:Q
             (tuple): (done, success, info)
         """
-        done = False
-        success = False
-        cur_step = info['current_step']
-        check_time = env.agents[agent_id].get_property_value(c.heading_check_time)
+        agent = env.agents[agent_id]
+        current_time = agent.get_property_value(c.simulation_sim_time_sec)
+        check_time = agent.get_property_value(c.heading_check_time)
         #check time is initially 0. This task works because the agent was initialized with a delta heading of 0 (target heading == current heading)
         # check heading when simulation_time exceed check_time
-        if env.agents[agent_id].get_property_value(c.simulation_sim_time_sec) >= check_time:
-            if math.fabs(env.agents[agent_id].get_property_value(c.delta_heading)) > 10:
-                done = True
-            # if current target heading is reached, random generate a new target heading
-            else:
-                delta = self.increment_size[env.heading_turn_counts]
-                delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
-                delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
-                delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_u_increment
-                new_heading = env.agents[agent_id].get_property_value(c.target_heading_deg) + delta_heading
-                new_heading = (new_heading + 360) % 360
-                new_heading = new_heading * np.pi / 180
-                new_altitude = env.agents[agent_id].get_property_value(c.travel_1_target_position_h_sl_m) + delta_altitude
-                new_velocities_u = env.agents[agent_id].get_property_value(c.travel_1_target_velocities_u_mps) + delta_velocities_u
 
-                env.agents[agent_id].set_property_value(c.travel_1_target_attitude_psi_rad, new_heading)
-                env.agents[agent_id].set_property_value(c.travel_1_target_position_h_sl_m, new_altitude)
-                env.agents[agent_id].set_property_value(c.travel_1_target_velocities_u_mps, new_velocities_u)
-                env.agents[agent_id].set_property_value(c.heading_check_time, check_time + c.travel_1_target_time_s)
-                env.heading_turn_counts += 1
-                self.log(f'current_step:{cur_step} target_heading:{new_heading} '
-                         f'target_altitude_m:{new_altitude} target_velocities_u_mps:{new_velocities_u}')
-        if done:
-            self.log(f'agent[{agent_id}] unreached heading. Total Steps={env.current_step}')
-            info['heading_turn_counts'] = env.heading_turn_counts
-        success = False
-        return done, success, info
+        if current_time >= check_time:
+            delta = self.increment_size[self.heading_turn_counts]
+            delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
+            delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
+            delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_u_increment
+            delta_time = env.np_random.uniform(10, 30)
+            
+            new_altitude = agent.get_property_value(c.travel_1_target_position_h_sl_m) + delta_altitude
+            new_altitude = min(max(600, new_altitude), 10000) #clamp to 500-10000m
+            agent.set_property_value(c.travel_1_target_position_h_sl_m, new_altitude)
+
+            #move from current, not the one we were aiming for.
+            #not sure which property we compare with for this one.
+            new_heading = agent.get_property_value(c.travel_1_target_attitude_psi_rad) * 180 / np.pi + delta_heading
+            new_heading = (new_heading + 360) % 360
+            new_heading = new_heading * np.pi / 180
+            agent.set_property_value(c.travel_1_target_attitude_psi_rad, new_heading)
+
+            new_velocities_u = agent.get_property_value(c.travel_1_target_velocities_u_mps) + delta_velocities_u
+            agent.set_property_value(c.travel_1_target_velocities_u_mps, new_velocities_u)
+            
+            new_time = delta_time + current_time
+            agent.set_property_value(c.heading_check_time, new_time)
+            agent.set_property_value(c.travel_1_target_time_s, new_time)
+            
+            self.heading_turn_counts += 1
+
+
     

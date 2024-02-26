@@ -12,7 +12,7 @@ class BaseCurriculum(ABC):
         self.config = config
 
     @abstractmethod   
-    def update_task(self, env):      
+    def step(self, env, agent_id, info= {}):    
         raise NotImplementedError
 
     @abstractmethod   

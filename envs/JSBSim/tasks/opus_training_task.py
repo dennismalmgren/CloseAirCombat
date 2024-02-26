@@ -2,9 +2,8 @@ import numpy as np
 from gymnasium import spaces
 from .task_base import BaseTask
 from ..core.catalog import Catalog as c
-from ..reward_functions import AltitudeReward, HeadingReward, SafeAltitudeReward
+from ..reward_functions import SafeAltitudeReward, OpusHeadingReward
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout
-from ..curricula import OpusCurriculum
 from ..utils.utils import LLA2NED, NED2LLA
 
 class OpusTrainingTask(BaseTask):
@@ -17,10 +16,9 @@ class OpusTrainingTask(BaseTask):
         self.n0, self.e0, self.u0 = 0, 0, 0
 
         self.reward_functions = [
-            #HeadingReward(self.config),
+            OpusHeadingReward(self.config),
             SafeAltitudeReward(self.config),
         ]
-        self.curriculum = OpusCurriculum(self.config)
 
         self.termination_conditions = [
             ExtremeState(self.config),
@@ -68,6 +66,7 @@ class OpusTrainingTask(BaseTask):
         # 3: search area
         # 4: engage target
         self.mission_var = [
+            c.current_task_id,
             c.task_1_type_id,
             c.task_2_type_id,
             c.travel_1_target_position_h_sl_m,
@@ -130,7 +129,7 @@ class OpusTrainingTask(BaseTask):
         ]
 
     def load_observation_space(self):
-        self.observation_space = spaces.Box(low=-10, high=10., shape=(35,))
+        self.observation_space = spaces.Box(low=-10, high=10., shape=(44,))
 
     def load_action_space(self):
         # aileron, elevator, rudder, throttle
@@ -141,7 +140,6 @@ class OpusTrainingTask(BaseTask):
 
     def reset(self, env):
         super().reset(env)
-        self.curriculum.reset(self, env)
 #        agent = env.agents.values()[0]
 #        #hack. move it from termination condition..
 #        self.termination_conditions[0].reset(env, agent)
@@ -182,103 +180,171 @@ class OpusTrainingTask(BaseTask):
         """
         return (angle_diff + np.pi) % (2 * np.pi) - np.pi
 
+    def calculate_delta_altitude_heading_speed(self, current_time, agent_id):
+        #todo: use agent_id
+        if int(self.mission_vars[0]) == 0:
+            ned_target = LLA2NED(self.state_props[1], self.state_props[2], self.mission_vars[3], self.lat0, self.lon0, self.alt0)
+
+            #construct the heading task observation.
+            target_altitude = np.asarray([ned_target[2]])
+            target_heading = np.asarray([self.mission_vars[4]])
+            target_speed = np.asarray([self.mission_vars[5]])
+            #convert to relative values.
+            self.delta_altitude = target_altitude - self.ned_frame_state[2]
+            self.delta_heading = self.normalize_angle_diff(target_heading - self.state_props[18])
+            self.delta_heading = np.asarray([np.cos(self.delta_heading[0]), np.sin(self.delta_heading[0])])
+            self.delta_speed = target_speed - self.ned_frame_state[6]
+            #what do we do about time?
+            target_time = self.mission_vars[6]
+            self.delta_time = np.asarray([target_time - current_time])
+        else:
+            self.delta_altitude = 0
+            self.delta_speed = 0
+            self.delta_time = 0
+
     def get_obs(self, env, agent_id):
         """
         Convert simulation states into the format of observation_space.
         observation space:
-        0. task 1 type id
-        1. task 2 type id
-        2. delta altitude ()
-        ned frame state
-        0. north
-        1. east
-        2. down
-        3. v_north
-        4. v_east
-        5. v_down
-        6. u
-        7. v
-        8. w
-        9. udot
-        10. vdot
-        11. wdot
-        12. attitude_w
-        13. attitude_x
-        14. attitude_y
-        15. attitude_z
-        16. attitude_rate_w
-        17. attitude_rate_x
-        18. attitude_rate_y
-        19. attitude_rate_z
-        20. heading (cos)
-        21. heading (sin)
-        22. vc
-        23. crosswind
-        24. headwind
-        25. aileron cmd norm
-        26. elevator cmd norm
-        27. rudder cmd norm
-        28. throttle cmd norm
+        0. current task id
+        1. task 1 type id
+        2. task 2 type id
+        3. delta altitude ()
+        4. north
+        5. east
+        6. down
+        7. v_north
+        8. v_east
+        9. v_down
+        10. u
+        11. v
+        12. w
+        13. udot
+        14. vdot
+        15. wdot
+        16. attitude_w
+        17. attitude_x
+        18. attitude_y
+        19. attitude_z
+        20. attitude_rate_w
+        21. attitude_rate_x
+        22. attitude_rate_y
+        23. attitude_rate_z
+        24. heading (cos)
+        25. heading (sin)
+        26. vc
+        27. crosswind
+        28. headwind
+        29. aileron cmd norm
+        30. elevator cmd norm
+        31. rudder cmd norm
+        32. throttle cmd norm
         """
-        state_props = np.array(env.agents[agent_id].get_property_values(self.state_var))
-        
-        ned_frame_state = self.convert_state_to_ned_frame(state_props)
-        action_props = np.array(env.agents[agent_id].get_property_values(self.action_var))
-        mission_vars = np.array(env.agents[agent_id].get_property_values(self.mission_var))
+        agent = env.agents[agent_id]
+        self.state_props = np.array(agent.get_property_values(self.state_var))
+        self.ned_frame_state = self.convert_state_to_ned_frame(self.state_props)
+        self.action_props = np.array(agent.get_property_values(self.action_var))
+        self.mission_vars = np.array(agent.get_property_values(self.mission_var))
+
         #mission_inputs:
-        tasks = np.asarray([mission_vars[0]])
-        #convert target altitude to NED.
-        ned_target = LLA2NED(state_props[1], state_props[2], mission_vars[2], self.lat0, self.lon0, self.alt0)
+        self.mission_declarations = np.asarray([self.mission_vars[0], self.mission_vars[1], self.mission_vars[2]])
+        #for now, train on one thing at a time.
+        #we don't know what inputs are required so lets construct them one step at a time.
+        #for now, we assume mission_vars[0] is always 0.
+        #mission_vars[1] could be 1 or 2:
+            # 1: travel in heading at altitude and speed
+            # 2: travel to waypoint
+        current_time = agent.get_property_value(c.simulation_sim_time_sec)
 
-        # Constructing the heading task observation
-        target_altitude = np.asarray([ned_target[2]])
-        target_heading = np.asarray([mission_vars[3]])
-        target_speed = np.asarray([mission_vars[4]])
-        #convert to relative values.
-        delta_altitude = target_altitude - ned_frame_state[2]
-        delta_heading = self.normalize_angle_diff(target_heading - state_props[18])
-        delta_heading = np.asarray([np.cos(delta_heading), np.sin(delta_heading)])
-        delta_speed = target_speed - ned_frame_state[6]
-        
+        waypoint_mission_vars = np.zeros(7, dtype=np.float32)
+        self.calculate_delta_altitude_heading_speed(current_time, agent_id)
+        if int(self.mission_vars[1]) == 0:
+            # This uses mission_vars 3-6
+            #c.travel_1_target_position_h_sl_m,
+            #c.travel_1_target_attitude_psi_rad,
+            #c.travel_1_target_velocities_u_mps,
+            #c.travel_1_target_time_s,
+            #convert target altitude to NED.
+
+            #we assume that target time is in simulator values.
+            #note that time could go into the red, I suppose.
+            heading_mission_vars = np.concatenate([self.delta_altitude, self.delta_heading, self.delta_speed, self.delta_time])
+            #this is 5-D
+        else:
+            heading_mission_vars = np.zeros(5, dtype=np.float32)
+
+        if int(self.mission_vars[1]) == 2:
+            # construct the waypoint task observation
+            # This uses mission_vars 11-14
+            #c.wp_1_1_target_position_h_sl_m,
+            #c.wp_1_1_target_position_lat_geod_rad,
+            #c.wp_1_1_target_position_long_gc_rad,
+            #c.wp_1_1_target_velocities_v_north_mps,
+            #c.wp_1_1_target_velocities_v_east_mps,
+            #c.wp_1_1_target_velocities_v_down_mps,
+            #c.wp_1_1_target_time_s,
+            #convert target altitude to NED.
+            ned_target = LLA2NED(self.mission_vars[12], self.mission_vars[13], self.mission_vars[11], self.lat0, self.lon0, self.alt0)
+            #construct the waypoint task observation.
+            delta_north = ned_target[0] - self.ned_frame_state[0]
+            delta_east = ned_target[1] - self.ned_frame_state[1]
+            delta_down = ned_target[2] - self.ned_frame_state[2]
+            delta_v_north = self.mission_vars[14] - self.ned_frame_state[3]
+            delta_v_east = self.mission_vars[15] - self.ned_frame_state[4]
+            delta_v_down = self.mission_vars[16] - self.ned_frame_state[5]
+            delta_time = self.mission_vars[17] - current_time
+            waypoint_mission_vars = np.concatenate([delta_north, delta_east, delta_down, delta_v_north, delta_v_east, delta_v_down, delta_time])
+
+
         #lets build observation.
-        norm_obs = np.zeros(35)
+        norm_obs = np.zeros(44)
+        norm_obs[0:3] = self.mission_declarations
 
-        norm_obs[0] = tasks[0]                  # task 1 type id
         #heading task representation
-        norm_obs[2] = delta_altitude / 5000     # 2. delta altitude (unit: 5km)
-        norm_obs[3] = delta_heading[0]          # 3. delta heading (cos)
-        norm_obs[4] = delta_heading[1]          # 4. delta heading (sin)
-        norm_obs[5] = delta_speed / 340         # 5. delta speed (unit: mach)
+        norm_obs[3:8] = heading_mission_vars
+        norm_obs[3] /= 5000 #delta altitude (unit: 5km)
+        norm_obs[6] /= 340 #delta speed (unit: mach)
+        norm_obs[7] /= 100 #delta time (unit: 100s)
+        #waypoint task representation
+        norm_obs[8:15] = waypoint_mission_vars
+        norm_obs[8] /= 5000 #delta north (unit: 5km)
+        norm_obs[9] /= 5000 #delta east (unit: 5km)
+        norm_obs[10] /= 5000 #delta down (unit: 5km)
+        norm_obs[11] /= 340 #delta v_north (unit: mach)
+        norm_obs[12] /= 340 #delta v_east (unit: mach)
+        norm_obs[13] /= 340 #delta v_down (unit: mach)
+        norm_obs[14] /= 100 #delta time (unit: 100s)
+        
         #local state representation, for efficient aircraft handling
-        norm_obs[6] = ned_frame_state[0] / 5000 # 3. north (unit: 5km)
-        norm_obs[7] = ned_frame_state[1] / 5000 # 4. east (unit: 5km)
-        norm_obs[8] = ned_frame_state[2] / 5000 # 5. down (unit: 5km)
-        norm_obs[9] = ned_frame_state[3] / 340  # 6. v_north (unit: mach)
-        norm_obs[10] = ned_frame_state[4] / 340 # 7. v_east (unit: mach)
-        norm_obs[11] = ned_frame_state[5] / 340 # 8. v_down (unit: mach)
-        norm_obs[12] = ned_frame_state[6] / 340 # 9. u (unit: mach)
-        norm_obs[13] = ned_frame_state[7] / 340 # 10. v (unit: mach)
-        norm_obs[14] = ned_frame_state[8] / 340 # 11. w (unit: mach)
-        norm_obs[15] = ned_frame_state[9] / 340 # 12. udot (unit: mach)
-        norm_obs[16] = ned_frame_state[10] / 340    # 13. vdot (unit: mach)
-        norm_obs[17] = ned_frame_state[11] / 340    # 14. wdot (unit: mach)
-        norm_obs[18] = ned_frame_state[12]          # 15. attitude_w (quat.w)
-        norm_obs[19] = ned_frame_state[13]          # 16. attitude_x (quat.x)
-        norm_obs[20] = ned_frame_state[14]          # 17. attitude_y (quat.y)
-        norm_obs[21] = ned_frame_state[15]          # 18. attitude_z (quat.z)
-        norm_obs[22] = ned_frame_state[16]          # 19. attitude_rate_w (quat.w)
-        norm_obs[23] = ned_frame_state[17]          # 20. attitude_rate_x (quat.x)
-        norm_obs[24] = ned_frame_state[18]          # 21. attitude_rate_y (quat.y)
-        norm_obs[25] = ned_frame_state[19]          # 22. attitude_rate_z (quat.z)
-        norm_obs[26] = ned_frame_state[20]          # 23. heading (cos)
-        norm_obs[27] = ned_frame_state[21]          # 24. heading (sin)
-        norm_obs[28] = ned_frame_state[22] / 340    # 25. vc (unit: mach)
-        norm_obs[29] = ned_frame_state[23] / 5000    # 26. crosswind (unit: 5 km/s)
-        norm_obs[30] = ned_frame_state[24] / 5000    # 27. headwind (unit: 5 km/s)
-        norm_obs[31] = action_props[0]              # 28. aileron cmd norm
-        norm_obs[32] = action_props[1]              # 29. elevator cmd norm
-        norm_obs[33] = action_props[2]              # 30. rudder cmd norm
-        norm_obs[34] = action_props[3]              # 31. throttle cmd norm
+        norm_obs[15] = self.ned_frame_state[0] / 5000 # 3. north (unit: 5km)
+        norm_obs[16] = self.ned_frame_state[1] / 5000 # 4. east (unit: 5km)
+        norm_obs[17] = self.ned_frame_state[2] / 5000 # 5. down (unit: 5km)
+        norm_obs[18] = self.ned_frame_state[3] / 340  # 6. v_north (unit: mach)
+        norm_obs[19] = self.ned_frame_state[4] / 340 # 7. v_east (unit: mach)
+        norm_obs[20] = self.ned_frame_state[5] / 340 # 8. v_down (unit: mach)
+        norm_obs[21] = self.ned_frame_state[6] / 340 # 9. u (unit: mach)
+        norm_obs[22] = self.ned_frame_state[7] / 340 # 10. v (unit: mach)
+        norm_obs[23] = self.ned_frame_state[8] / 340 # 11. w (unit: mach)
+        norm_obs[24] = self.ned_frame_state[9] / 340 # 12. udot (unit: mach)
+        norm_obs[25] = self.ned_frame_state[10] / 340    # 13. vdot (unit: mach)
+        norm_obs[26] = self.ned_frame_state[11] / 340    # 14. wdot (unit: mach)
+        norm_obs[27] = self.ned_frame_state[12]          # 15. attitude_w (quat.w)
+        norm_obs[28] = self.ned_frame_state[13]          # 16. attitude_x (quat.x)
+        norm_obs[29] = self.ned_frame_state[14]          # 17. attitude_y (quat.y)
+        norm_obs[30] = self.ned_frame_state[15]          # 18. attitude_z (quat.z)
+        norm_obs[31] = self.ned_frame_state[16]          # 19. attitude_rate_w (quat.w)
+        norm_obs[32] = self.ned_frame_state[17]          # 20. attitude_rate_x (quat.x)
+        norm_obs[33] = self.ned_frame_state[18]          # 21. attitude_rate_y (quat.y)
+        norm_obs[34] = self.ned_frame_state[19]          # 22. attitude_rate_z (quat.z)
+        norm_obs[35] = self.ned_frame_state[20]          # 23. heading (cos)
+        norm_obs[36] = self.ned_frame_state[21]          # 24. heading (sin)
+        norm_obs[37] = self.ned_frame_state[22] / 340    # 25. vc (unit: mach)
+        norm_obs[38] = self.ned_frame_state[23] / 5000    # 26. crosswind (unit: 5 km/s)
+        norm_obs[39] = self.ned_frame_state[24] / 5000    # 27. headwind (unit: 5 km/s)
+        norm_obs[40] = self.action_props[0]              # 28. aileron cmd norm
+        norm_obs[41] = self.action_props[1]              # 29. elevator cmd norm
+        norm_obs[42] = self.action_props[2]              # 30. rudder cmd norm
+        norm_obs[43] = self.action_props[3]              # 31. throttle cmd norm
         norm_obs = np.clip(norm_obs, self.observation_space.low, self.observation_space.high)
         return norm_obs
 

@@ -537,19 +537,27 @@ class ExtraCatalog(Property, Enum):
     # 4: engage target
     # Assignments can be given in sequence (2 in a row)
     # such as task 1 = 1, task 2 = 2. 
+    current_task_id = Property(
+        "missions/current_task_id",
+        "current_task_id",
+        0,
+        2,
+        spaces=Discrete
+    )
+
     task_1_type_id = Property(
         "missions/task_1_type_id",
         "task 1 type id",
         0,
-        4,
+        5,
         spaces=Discrete
     )
 
     task_2_type_id = Property(
-        "missions/task_1_type_id",
-        "task 1 type id",
+        "missions/task_2_type_id",
+        "task 2 type id",
         0,
-        4,
+        5,
         spaces=Discrete
     )
 
@@ -576,7 +584,7 @@ class ExtraCatalog(Property, Enum):
     )
 
     travel_1_target_time_s = Property(
-        "missions/travel-2-target-time-sec",
+        "missions/travel-1-target-time-sec",
         "target time [sec]",
         0
     )
@@ -803,7 +811,7 @@ class ExtraCatalog(Property, Enum):
 
     #search area
     search_area_1_x1_grid = Property(
-        "missions/search-area-x-1-grid",
+        "missions/search-area-1-x-1-grid",
         "search area grid x1 coordinate",
         0,
         1000,
@@ -811,7 +819,7 @@ class ExtraCatalog(Property, Enum):
     )
 
     search_area_1_y1_grid = Property(
-        "missions/search-area-y-1-grid",
+        "missions/search-area-1-y-1-grid",
         "search area grid y1 coordinate",
         0,
         1000,
@@ -819,7 +827,7 @@ class ExtraCatalog(Property, Enum):
     )
 
     search_area_1_x2_grid = Property(
-        "missions/search-area-x-2-grid",
+        "missions/search-area-1-x-2-grid",
         "search area grid x2 coordinate",
         0,
         1000,
@@ -827,7 +835,7 @@ class ExtraCatalog(Property, Enum):
     )
 
     search_area_1_y2_grid = Property(
-        "missions/search-area-y-2-grid",
+        "missions/search-area-1-y-2-grid",
         "search area grid y2 coordinate",
         0,
         1000,
@@ -841,7 +849,7 @@ class ExtraCatalog(Property, Enum):
     )
 
     search_area_2_x1_grid = Property(
-        "missions/search-area-x-1-grid",
+        "missions/search-area-2-x-1-grid",
         "search area grid x1 coordinate",
         0,
         1000,
@@ -849,7 +857,7 @@ class ExtraCatalog(Property, Enum):
     )
 
     search_area_2_y1_grid = Property(
-        "missions/search-area-y-1-grid",
+        "missions/search-area-2-y-1-grid",
         "search area grid y1 coordinate",
         0,
         1000,
@@ -857,7 +865,7 @@ class ExtraCatalog(Property, Enum):
     )
 
     search_area_2_x2_grid = Property(
-        "missions/search-area-x-2-grid",
+        "missions/search-area-2-x-2-grid",
         "search area grid x2 coordinate",
         0,
         1000,
@@ -865,7 +873,7 @@ class ExtraCatalog(Property, Enum):
     )
 
     search_area_2_y2_grid = Property(
-        "missions/search-area-y-2-grid",
+        "missions/search-area-2-y-2-grid",
         "search area grid y2 coordinate",
         0,
         1000,

@@ -60,11 +60,16 @@ class BaseEnv(gym.Env):
 
     def load(self):
         self.load_task()
+        self.load_curriculum()
         self.load_simulator()
         self.seed()
 
     def load_task(self):
         self.task = BaseTask(self.config)
+  
+    def load_curriculum(self):
+        self.curriculum = None
+        pass
 
     def load_simulator(self):
         self._jsbsims = {}     # type: Dict[str, AircraftSimulator]
@@ -111,6 +116,7 @@ class BaseEnv(gym.Env):
 
         # reset task
         self.task.reset(self)
+        self.curriculum.reset(self.task, self)
         obs = self.get_obs()
         info = {}
         if self.dict_spaces:
@@ -149,7 +155,8 @@ class BaseEnv(gym.Env):
             for sim in self._tempsims.values():
                 sim.run()
         self.task.step(self)
-
+        for agent_id in self.agents.keys():
+            self.curriculum.step(self, agent_id)
         obs = self.get_obs()
 
         #dones = {}
