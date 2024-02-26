@@ -60,12 +60,65 @@ def main(cfg: DictConfig):  # noqa: F821
     actor = policy_module
     critic = value_module
 
-    # Create collector
+   
+    loss_module = P3OLoss(
+        actor_network=actor,
+        critic_network=critic,
+        #clip_epsilon=cfg.optim.clip_epsilon,
+        loss_critic_type=cfg.optim.loss_critic_type,
+        entropy_coef=cfg.optim.entropy_coef,
+        critic_coef=cfg.optim.critic_coef,
+        normalize_advantage=True,
+    )
+
+    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr, eps=1e-5)
+    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr, eps=1e-5)
+
+
+    load_model = True
+    run_as_debug = True
+    load_from_debug = False
+    #debug outputs is at the root.
+    #commandline outputs is at scripts/patrol/outputs
+    if load_model:
+        if run_as_debug:
+            if load_from_debug:
+                outputs_folder = "../../"
+            else:
+                outputs_folder = "../../../scripts/train/outputs/"
+        else:
+            if load_from_debug:
+                outputs_folder = "../../../../../outputs"
+            else:
+                outputs_folder = "../../"
+        
+        run_id = "2024-02-26/13-17-00/"
+        iteration = 1000000
+        model_load_filename = f"training_snapshot_{iteration}.pt"
+        load_model_dir = outputs_folder + run_id
+        print('Loading model from ' + load_model_dir)
+        loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
+        actor_state = loaded_state['model_actor']
+        critic_state = loaded_state['model_critic']
+        actor_optim_state = loaded_state['actor_optimizer']
+        critic_optim_state = loaded_state['critic_optimizer']
+        collected_frames_dict = loaded_state["collected_frames"]
+        collected_frames = collected_frames_dict["collected_frames"]
+
+        actor.load_state_dict(actor_state)
+        critic.load_state_dict(critic_state)
+        actor_optim.load_state_dict(actor_optim_state)
+        critic_optim.load_state_dict(critic_optim_state)
+    else:          
+        collected_frames = 0
+    frames_remaining = cfg.collector.total_frames - collected_frames
+
+ # Create collector
     collector = SyncDataCollector(
         create_env_fn=make_environment(cfg, return_eval=False),
         policy=actor,
         frames_per_batch=cfg.collector.frames_per_batch,
-        total_frames=cfg.collector.total_frames,
+        total_frames=frames_remaining,
         device=device,
         storing_device=device,
         max_frames_per_traj=-1,
@@ -86,20 +139,6 @@ def main(cfg: DictConfig):  # noqa: F821
         average_gae=False,
     )
 
-    loss_module = P3OLoss(
-        actor_network=actor,
-        critic_network=critic,
-        #clip_epsilon=cfg.optim.clip_epsilon,
-        loss_critic_type=cfg.optim.loss_critic_type,
-        entropy_coef=cfg.optim.entropy_coef,
-        critic_coef=cfg.optim.critic_coef,
-        normalize_advantage=True,
-    )
-
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr, eps=1e-5)
-    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr, eps=1e-5)
-
-
     # Create logger
     exp_name = generate_exp_name("OPUS", cfg.logger.exp_name)
     logger = None
@@ -112,35 +151,15 @@ def main(cfg: DictConfig):  # noqa: F821
                           "project": cfg.logger.project,},
         )
 
-
-    #load_dir = '/home/dennismalmgren/repos/CloseAirCombat/scripts/train/outputs/2023-11-18/03-57-26'
-    #load_state = torch.load(f"{load_dir}/training_snapshot_1000000.pt")
-#    load_dir = '/home/dennismalmgren/repos/CloseAirCombat/scripts/train/outputs/2023-11-17/08-05-57'
-#    load_state = torch.load(f"{load_dir}/training_snapshot_1000000.pt")
-    #model.load_state_dict(load_state['model'])
-    #loss_module.load_state_dict(load_state['loss'])
-    #optimizer_alpha.load_state_dict(load_state['optimizer_alpha'])
-    #optimizer_critic.load_state_dict(load_state['optimizer_critic'])
-    #optimizer_actor.load_state_dict(load_state['optimizer_actor'])
-    #load_dir = '/home/dennismalmgren/repos/CloseAirCombat/pretrained/2023-11-18/lowlevel'
-    #load_dir = '/home/dennismalmgren/repos/CloseAirCombat/scripts/train/outputs/2023-11-18/22-57-45'
-    #load_state = torch.load(f"{load_dir}/training_snapshot_3000000.pt")
-    #model.load_state_dict(load_state['model'])
-    #loss_module.load_state_dict(load_state['loss'])
-    #optimizer_alpha.load_state_dict(load_state['optimizer_alpha'])
-    #optimizer_critic.load_state_dict(load_state['optimizer_critic'])
-    #optimizer_actor.load_state_dict(load_state['optimizer_actor'])
-
-    # Main loop
-    collected_frames = 0
     num_network_updates = 0
 
     start_time = time.time()
-    pbar = tqdm.tqdm(total=cfg.collector.total_frames)
+    pbar = tqdm.tqdm(total=cfg.collector.total_frames, ncols=0)
+    pbar.update(collected_frames)
     sampling_start = time.time()
     num_mini_batches = cfg.collector.frames_per_batch // cfg.optim.mini_batch_size
     total_network_updates = (
-        (cfg.collector.total_frames // cfg.collector.frames_per_batch)
+        (frames_remaining // cfg.collector.frames_per_batch)
         * cfg.optim.ppo_epochs
         * num_mini_batches
     )
@@ -244,7 +263,14 @@ def main(cfg: DictConfig):  # noqa: F821
                     }
                 )
                 actor.train()
-
+                savestate = {
+                        'model_actor': actor.state_dict(),
+                        'model_critic': critic.state_dict(),
+                        'actor_optimizer': actor_optim.state_dict(),
+                        'critic_optimizer': critic_optim.state_dict(),
+                        "collected_frames": {"collected_frames": collected_frames}
+                }
+            torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
         if logger:
             for key, value in log_info.items():
                 logger.log_scalar(key, value, collected_frames)

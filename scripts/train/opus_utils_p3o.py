@@ -278,6 +278,7 @@ def make_ppo_models(cfg, eval_env, device):
 
 def eval_model(actor, test_env, num_episodes=3):
     test_rewards = []
+    test_lengths = []
     for _ in range(num_episodes):
         td_test = test_env.rollout(
             policy=actor,
@@ -286,10 +287,14 @@ def eval_model(actor, test_env, num_episodes=3):
             break_when_any_done=True,
             max_steps=10_000_000,
         )
+
         reward = td_test["next", "episode_reward"][td_test["next", "done"]]
+        episode_length = td_test["next", "step_count"][td_test["next", "done"]]
+
         test_rewards.append(reward.cpu())
+        test_lengths.append(episode_length.type(torch.float32).cpu())
     del td_test
-    return torch.cat(test_rewards, 0).mean()
+    return torch.cat(test_rewards, 0).mean(), torch.cat(test_lengths, 0).mean()
 
 def make_sac_agent(cfg, train_env, eval_env, device):
     """Make SAC agent."""
