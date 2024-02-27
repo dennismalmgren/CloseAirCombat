@@ -3,14 +3,15 @@ from .reward_function_base import BaseRewardFunction
 from ..core.catalog import Catalog as c
 import numpy as np
 
-class OpusWaypointReward(BaseRewardFunction):
+class OpusWaypointPotentialReward(BaseRewardFunction):
     """
     Measure the difference between the current heading and the target heading
     """
     def __init__(self, config):
         super().__init__(config)
         self.reward_item_names = [self.__class__.__name__ + item for item in ['', 
-                                                                              '_wp_dist', '_wp_time', '_wp_speed', '_wp_roll']]
+                                                                              '_wp_approach']]
+        self.is_potential = True
 
     def reset(self, task, env):
         self.time_taken = 0
@@ -38,25 +39,28 @@ class OpusWaypointReward(BaseRewardFunction):
             active_task_type = int(agent.get_property_value(c.task_1_type_id))
         else:
             active_task_type = int(agent.get_property_value(c.task_2_type_id))
-
         if active_task_type != 2:
-            reward = wp_pos_x_r = wp_pos_y_r = wp_pos_z_r = wp_time = 0.0
-            return self._process(reward, agent_id, (wp_pos_x_r, wp_pos_y_r, wp_pos_z_r, wp_time))
+            reward = _wp_approach = 0.0
+            return self._process(reward, agent_id, (_wp_approach))
         else:
+            active_waypoint_index = active_task - 1
             wp_time_r = -1
             wp_dist = 0
             current_north = agent.get_property_value(c.position_north_m)
             current_east = agent.get_property_value(c.position_east_m)
             current_down = agent.get_property_value(c.position_down_m)
+            dist = np.linalg.norm(np.array([current_north - task.waypoints[active_waypoint_index][0], 
+                             current_east - task.waypoints[active_waypoint_index][1], 
+                             current_down - task.waypoints[active_waypoint_index][2]]))
+            dist_error_scale = 15.24  # m
+            alt_r = math.exp(-((env.agents[agent_id].get_property_value(c.delta_altitude) / alt_error_scale) ** 2))
+ 
             #reach if within 200m.
             if np.linalg.norm(np.array([current_north - self.current_waypoint[0], 
                              current_east - self.current_waypoint[1]])) < 100 and \
                                 np.norm(np.array([current_down - self.current_waypoint[2]])) < 30:
                 wp_dist = 1
-
-            roll_error_scale = 0.35  # radians ~= 20 degrees
-            roll_r = 0.001 * math.exp(-((env.agents[agent_id].get_property_value(c.attitude_roll_rad) / roll_error_scale) ** 2))
-
-            reward = wp_dist + wp_time_r + roll_r
-            return self._process(reward, agent_id, (wp_dist, wp_time_r, roll_r))
+                
+            reward = wp_dist + wp_time_r
+            return self._process(reward, agent_id, (wp_dist, wp_time_r))
     
