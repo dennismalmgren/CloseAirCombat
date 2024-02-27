@@ -92,8 +92,8 @@ def main(cfg: DictConfig):  # noqa: F821
             else:
                 outputs_folder = "../../"
         
-        run_id = "2024-02-27/10-39-34/"
-        iteration = 43064000
+        run_id = "2024-02-27/13-23-12/"
+        iteration = 49072000
         model_load_filename = f"training_snapshot_{iteration}.pt"
         load_model_dir = outputs_folder + run_id
         print('Loading model from ' + load_model_dir)
