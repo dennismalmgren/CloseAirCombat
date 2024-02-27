@@ -632,10 +632,10 @@ class ExtraCatalog(Property, Enum):
     )
 
     wp_1_1_target_position_long_gc_rad = Property(
-        "missions/wp-1-1-target-position-lat-geod-rad",
+        "missions/wp-1-1-target-position-long-gc-rad",
         "target geocentric (geodesic) longitude [rad]",
-        JsbsimCatalog.position_lat_geod_rad.min,
-        JsbsimCatalog.position_lat_geod_rad.max,
+        JsbsimCatalog.position_long_gc_rad.min,
+        JsbsimCatalog.position_long_gc_rad.max,
     )
 
     wp_1_1_target_velocities_v_north_mps = Property(
@@ -680,10 +680,10 @@ class ExtraCatalog(Property, Enum):
     )
 
     wp_1_2_target_position_long_gc_rad = Property(
-        "missions/wp-1-2-target-position-lat-geod-rad",
+        "missions/wp-1-2-target-position-long-gc-rad",
         "target geocentric (geodesic) longitude [rad]",
-        JsbsimCatalog.position_lat_geod_rad.min,
-        JsbsimCatalog.position_lat_geod_rad.max,
+        JsbsimCatalog.position_long_gc_rad.min,
+        JsbsimCatalog.position_long_gc_rad.max,
     )
 
     wp_1_2_target_velocities_v_north_mps = Property(
@@ -728,10 +728,10 @@ class ExtraCatalog(Property, Enum):
     )
 
     wp_2_1_target_position_long_gc_rad = Property(
-        "missions/wp-2-1-target-position-lat-geod-rad",
+        "missions/wp-2-1-target-position-long-gc-rad",
         "target geocentric (geodesic) longitude [rad]",
-        JsbsimCatalog.position_lat_geod_rad.min,
-        JsbsimCatalog.position_lat_geod_rad.max,
+        JsbsimCatalog.position_long_gc_rad.min,
+        JsbsimCatalog.position_long_gc_rad.max,
     )
 
     wp_2_1_target_velocities_v_north_mps = Property(
@@ -778,8 +778,8 @@ class ExtraCatalog(Property, Enum):
     wp_2_2_target_position_long_gc_rad = Property(
         "missions/wp-2-2-target-position-lat-geod-rad",
         "target geocentric (geodesic) longitude [rad]",
-        JsbsimCatalog.position_lat_geod_rad.min,
-        JsbsimCatalog.position_lat_geod_rad.max,
+        JsbsimCatalog.position_long_gc_rad.min,
+        JsbsimCatalog.position_long_gc_rad.max,
     )
 
     wp_2_2_target_velocities_v_north_mps = Property(
@@ -945,6 +945,8 @@ class ExtraCatalog(Property, Enum):
         "tc/target-longitude-geod-deg", "target geocentric longitude [deg]", -180, 180
     )
     heading_check_time = Property("heading_check_time", "time to check whether current time reaches heading time", 0, 1000000)
+    waypoint_1_1_check_time = Property("waypoint_1_1_check_time", "time to check whether waypoint has been reached", 0, 1000000)
+    waypoint_1_2_check_time = Property("waypoint_1_2_check_time", "time to check whether waypoint has been reached", 0, 1000000)
 
 
 class MixedCatalog(dict):

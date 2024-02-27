@@ -76,7 +76,7 @@ def main(cfg: DictConfig):  # noqa: F821
 
 
     load_model = True
-    run_as_debug = True
+    run_as_debug = False
     load_from_debug = False
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
@@ -92,8 +92,8 @@ def main(cfg: DictConfig):  # noqa: F821
             else:
                 outputs_folder = "../../"
         
-        run_id = "2024-02-26/13-17-00/"
-        iteration = 1000000
+        run_id = "2024-02-27/04-02-23/"
+        iteration = 4056000
         model_load_filename = f"training_snapshot_{iteration}.pt"
         load_model_dir = outputs_folder + run_id
         print('Loading model from ' + load_model_dir)

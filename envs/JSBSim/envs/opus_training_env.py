@@ -1,6 +1,6 @@
 from .env_base import BaseEnv
 from ..tasks import OpusTrainingTask
-from ..curricula import OpusCurriculum
+from ..curricula import OpusCurriculum, OpusCurriculumWaypoints
 from ..core.catalog import Catalog as c
 
 class OpusTrainingEnv(BaseEnv):
@@ -16,7 +16,7 @@ class OpusTrainingEnv(BaseEnv):
 
     #set by curriculum.
     def load_curriculum(self):
-        self.curriculum = OpusCurriculum(self.config)
+        self.curriculum = OpusCurriculumWaypoints(self.config)
 
     def load_task(self):
         #taskname = getattr(self.config, 'task', None)

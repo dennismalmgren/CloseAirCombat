@@ -16,7 +16,7 @@ env:
 # Logger
 logger:
   backend: wandb
-  mode: online
+  mode: disabled
   exp_name: opus_heading
   project: ppo_opus
   test_interval: 1_000_000

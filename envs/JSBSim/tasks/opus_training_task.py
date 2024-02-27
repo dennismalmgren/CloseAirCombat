@@ -2,7 +2,7 @@ import numpy as np
 from gymnasium import spaces
 from .task_base import BaseTask
 from ..core.catalog import Catalog as c
-from ..reward_functions import SafeAltitudeReward, OpusHeadingReward
+from ..reward_functions import SafeAltitudeReward, OpusHeadingReward, OpusWaypointReward
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout
 from ..utils.utils import LLA2NED, NED2LLA
 
@@ -17,6 +17,7 @@ class OpusTrainingTask(BaseTask):
 
         self.reward_functions = [
             OpusHeadingReward(self.config),
+            OpusWaypointReward(self.config),
             SafeAltitudeReward(self.config),
         ]
 
@@ -77,6 +78,7 @@ class OpusTrainingTask(BaseTask):
             c.travel_2_target_attitude_psi_rad,
             c.travel_2_target_velocities_u_mps,
             c.travel_2_target_time_s,
+        
             c.wp_1_1_target_position_h_sl_m,
             c.wp_1_1_target_position_lat_geod_rad,
             c.wp_1_1_target_position_long_gc_rad,
@@ -91,35 +93,36 @@ class OpusTrainingTask(BaseTask):
             c.wp_1_2_target_velocities_v_east_mps,
             c.wp_1_2_target_velocities_v_down_mps,
             c.wp_1_2_target_time_s,            
-            c.wp_2_1_target_position_h_sl_m,
-            c.wp_2_1_target_position_lat_geod_rad,
-            c.wp_2_1_target_position_long_gc_rad,
-            c.wp_2_1_target_velocities_v_north_mps,
-            c.wp_2_1_target_velocities_v_east_mps,
-            c.wp_2_1_target_velocities_v_down_mps,
-            c.wp_2_1_target_time_s,
-            c.wp_2_2_target_position_h_sl_m,
-            c.wp_2_2_target_position_lat_geod_rad,
-            c.wp_2_2_target_position_long_gc_rad,
-            c.wp_2_2_target_velocities_v_north_mps,
-            c.wp_2_2_target_velocities_v_east_mps,
-            c.wp_2_2_target_velocities_v_down_mps,
-            c.wp_2_2_target_time_s,            
-            c.search_area_1_x1_grid,
-            c.search_area_1_y1_grid,
-            c.search_area_1_x2_grid,
-            c.search_area_1_y2_grid,
-            c.search_area_1_target_time_s,
-            c.search_area_2_x1_grid,
-            c.search_area_2_y1_grid,
-            c.search_area_2_x2_grid,
-            c.search_area_2_y2_grid,
-            c.search_area_2_target_time_s,
-            c.akan_destroy_1_target_id,
-            c.akan_destroy_1_target_time_s,
-            c.akan_destroy_2_target_id,
-            c.akan_destroy_2_target_time_s,
         ]
+            # c.wp_2_1_target_position_h_sl_m,
+            # c.wp_2_1_target_position_lat_geod_rad,
+            # c.wp_2_1_target_position_long_gc_rad,
+            # c.wp_2_1_target_velocities_v_north_mps,
+            # c.wp_2_1_target_velocities_v_east_mps,
+            # c.wp_2_1_target_velocities_v_down_mps,
+            # c.wp_2_1_target_time_s,
+            # c.wp_2_2_target_position_h_sl_m,
+            # c.wp_2_2_target_position_lat_geod_rad,
+            # c.wp_2_2_target_position_long_gc_rad,
+            # c.wp_2_2_target_velocities_v_north_mps,
+            # c.wp_2_2_target_velocities_v_east_mps,
+            # c.wp_2_2_target_velocities_v_down_mps,
+            # c.wp_2_2_target_time_s,            
+            # c.search_area_1_x1_grid,
+            # c.search_area_1_y1_grid,
+            # c.search_area_1_x2_grid,
+            # c.search_area_1_y2_grid,
+            # c.search_area_1_target_time_s,
+            # c.search_area_2_x1_grid,
+            # c.search_area_2_y1_grid,
+            # c.search_area_2_x2_grid,
+            # c.search_area_2_y2_grid,
+            # c.search_area_2_target_time_s,
+            # c.akan_destroy_1_target_id,
+            # c.akan_destroy_1_target_time_s,
+            # c.akan_destroy_2_target_id,
+            # c.akan_destroy_2_target_time_s,
+        #]
 
         self.action_var = [
             c.fcs_aileron_cmd_norm,             # [-1., 1.]
@@ -129,7 +132,7 @@ class OpusTrainingTask(BaseTask):
         ]
 
     def load_observation_space(self):
-        self.observation_space = spaces.Box(low=-10, high=10., shape=(44,))
+        self.observation_space = spaces.Box(low=-10, high=10., shape=(51,))
 
     def load_action_space(self):
         # aileron, elevator, rudder, throttle
@@ -179,10 +182,100 @@ class OpusTrainingTask(BaseTask):
         Normalize an angle difference to the range [-pi, pi].
         """
         return (angle_diff + np.pi) % (2 * np.pi) - np.pi
-
-    def calculate_delta_altitude_heading_speed(self, current_time, agent_id):
+    
+    def calculate_waypoint_task_variables(self, current_time, env, agent_id):
+        # task type id
+        # 0: no mission (not used),
+        # 1: travel in heading at altitude and speed
+        # 2: travel to waypoint
+        # 3: search area
+        # 4: engage target
         #todo: use agent_id
-        if int(self.mission_vars[0]) == 0:
+        active_task = int(env.agents[agent_id].get_property_value(c.current_task_id))
+        if active_task == 1:
+            active_task_type = int(env.agents[agent_id].get_property_value(c.task_1_type_id))
+        else:
+            active_task_type = int(env.agents[agent_id].get_property_value(c.task_2_type_id))
+
+        if active_task_type != 2:
+            self.delta_1_north = np.array([0])
+            self.delta_1_east = np.array([0])
+            self.delta_1_down = np.array([0])
+            self.delta_1_v_north = np.array([0])
+            self.delta_1_v_east = np.array([0])
+            self.delta_1_v_down = np.array([0])
+            self.delta_1_time = np.array([0])
+            self.delta_2_north = np.array([0])
+            self.delta_2_east = np.array([0])
+            self.delta_2_down = np.array([0])
+            self.delta_2_v_north = np.array([0])
+            self.delta_2_v_east = np.array([0])
+            self.delta_2_v_down = np.array([0])
+            self.delta_2_time = np.array([0])
+        else:
+            #construct the waypoint task observation
+            # This uses mission_vars 11-14
+            #c.wp_1_1_target_position_h_sl_m,
+            #c.wp_1_1_target_position_lat_geod_rad,
+            #c.wp_1_1_target_position_long_gc_rad,
+            #c.wp_1_1_target_velocities_v_north_mps,
+            #c.wp_1_1_target_velocities_v_east_mps,
+            #c.wp_1_1_target_velocities_v_down_mps,
+            #c.wp_1_1_target_time_s,
+            #convert target altitude to NED.
+            ned_target = LLA2NED(self.mission_vars[12] * 180 / np.pi, self.mission_vars[13] * 180 / np.pi, self.mission_vars[11], self.lat0, self.lon0, self.alt0)
+            #construct the waypoint task observation.
+            self.delta_1_north = np.array([ned_target[0] - self.ned_frame_state[0]])
+            self.delta_1_east = np.array([ned_target[1] - self.ned_frame_state[1]])
+            self.delta_1_down = np.array([ned_target[2] - self.ned_frame_state[2]])
+            self.delta_1_v_north = np.array([self.mission_vars[14] - self.ned_frame_state[3]])
+            self.delta_1_v_east = np.array([self.mission_vars[15] - self.ned_frame_state[4]])
+            self.delta_1_v_down = np.array([self.mission_vars[16] - self.ned_frame_state[5]])
+            self.delta_1_time = np.array([self.mission_vars[17] - current_time])
+
+            #construct the waypoint task observation
+            # This uses mission_vars 15-18
+            #c.wp_1_2_target_position_h_sl_m,
+            #c.wp_1_2_target_position_lat_geod_rad,
+            #c.wp_1_2_target_position_long_gc_rad,
+            #c.wp_1_2_target_velocities_v_north_mps,
+            #c.wp_1_2_target_velocities_v_east_mps,
+            #c.wp_1_2_target_velocities_v_down_mps,
+            #c.wp_1_2_target_time_s,
+            ned_target = LLA2NED(self.mission_vars[20] * 180 / np.pi, self.mission_vars[21] * 180 / np.pi, self.mission_vars[19], self.lat0, self.lon0, self.alt0)
+            #construct the waypoint task observation.
+            self.delta_2_north = np.array([ned_target[0] - self.ned_frame_state[0]])
+            self.delta_2_east = np.array([ned_target[1] - self.ned_frame_state[1]])
+            self.delta_2_down = np.array([ned_target[2] - self.ned_frame_state[2]])
+            self.delta_2_v_north = np.array([self.mission_vars[21] - self.ned_frame_state[3]])
+            self.delta_2_v_east = np.array([self.mission_vars[22] - self.ned_frame_state[4]])
+            self.delta_2_v_down = np.array([self.mission_vars[23] - self.ned_frame_state[5]])
+            self.delta_2_time = np.array([self.mission_vars[24] - current_time])
+
+
+
+
+    def calculate_heading_task_variables(self, current_time, env, agent_id):
+        # task type id
+        # 0: no mission (not used),
+        # 1: travel in heading at altitude and speed
+        # 2: travel to waypoint
+        # 3: search area
+        # 4: engage target
+        #todo: use agent_id
+        active_task = int(env.agents[agent_id].get_property_value(c.current_task_id))
+
+        if active_task == 1:
+            active_task_type = int(env.agents[agent_id].get_property_value(c.task_1_type_id))
+        else:
+            active_task_type = int(env.agents[agent_id].get_property_value(c.task_2_type_id))
+
+        if active_task_type != 1:
+            self.delta_altitude = np.array([0])
+            self.delta_speed = np.array([0])
+            self.delta_heading = np.array([0, 0])
+            self.delta_time = np.array([0])
+        else:
             ned_target = LLA2NED(self.state_props[1], self.state_props[2], self.mission_vars[3], self.lat0, self.lon0, self.alt0)
 
             #construct the heading task observation.
@@ -197,10 +290,6 @@ class OpusTrainingTask(BaseTask):
             #what do we do about time?
             target_time = self.mission_vars[6]
             self.delta_time = np.asarray([target_time - current_time])
-        else:
-            self.delta_altitude = 0
-            self.delta_speed = 0
-            self.delta_time = 0
 
     def get_obs(self, env, agent_id):
         """
@@ -209,7 +298,7 @@ class OpusTrainingTask(BaseTask):
         0. current task id
         1. task 1 type id
         2. task 2 type id
-        3. delta altitude ()
+        3. delta altitude
         4. north
         5. east
         6. down
@@ -256,48 +345,28 @@ class OpusTrainingTask(BaseTask):
             # 2: travel to waypoint
         current_time = agent.get_property_value(c.simulation_sim_time_sec)
 
-        waypoint_mission_vars = np.zeros(7, dtype=np.float32)
-        self.calculate_delta_altitude_heading_speed(current_time, agent_id)
-        if int(self.mission_vars[1]) == 0:
-            # This uses mission_vars 3-6
-            #c.travel_1_target_position_h_sl_m,
-            #c.travel_1_target_attitude_psi_rad,
-            #c.travel_1_target_velocities_u_mps,
-            #c.travel_1_target_time_s,
-            #convert target altitude to NED.
-
-            #we assume that target time is in simulator values.
-            #note that time could go into the red, I suppose.
-            heading_mission_vars = np.concatenate([self.delta_altitude, self.delta_heading, self.delta_speed, self.delta_time])
-            #this is 5-D
-        else:
-            heading_mission_vars = np.zeros(5, dtype=np.float32)
-
-        if int(self.mission_vars[1]) == 2:
-            # construct the waypoint task observation
-            # This uses mission_vars 11-14
-            #c.wp_1_1_target_position_h_sl_m,
-            #c.wp_1_1_target_position_lat_geod_rad,
-            #c.wp_1_1_target_position_long_gc_rad,
-            #c.wp_1_1_target_velocities_v_north_mps,
-            #c.wp_1_1_target_velocities_v_east_mps,
-            #c.wp_1_1_target_velocities_v_down_mps,
-            #c.wp_1_1_target_time_s,
-            #convert target altitude to NED.
-            ned_target = LLA2NED(self.mission_vars[12], self.mission_vars[13], self.mission_vars[11], self.lat0, self.lon0, self.alt0)
-            #construct the waypoint task observation.
-            delta_north = ned_target[0] - self.ned_frame_state[0]
-            delta_east = ned_target[1] - self.ned_frame_state[1]
-            delta_down = ned_target[2] - self.ned_frame_state[2]
-            delta_v_north = self.mission_vars[14] - self.ned_frame_state[3]
-            delta_v_east = self.mission_vars[15] - self.ned_frame_state[4]
-            delta_v_down = self.mission_vars[16] - self.ned_frame_state[5]
-            delta_time = self.mission_vars[17] - current_time
-            waypoint_mission_vars = np.concatenate([delta_north, delta_east, delta_down, delta_v_north, delta_v_east, delta_v_down, delta_time])
-
+        self.calculate_heading_task_variables(current_time, env, agent_id)
+        self.calculate_waypoint_task_variables(current_time, env, agent_id)
+        waypoint_1_mission_vars = np.concatenate([self.delta_1_north, 
+                                                self.delta_1_east, 
+                                                self.delta_1_down, 
+                                                self.delta_1_v_north, 
+                                                self.delta_1_v_east, 
+                                                self.delta_1_v_down, 
+                                                self.delta_1_time])
+        waypoint_2_mission_vars = np.concatenate([
+                                                self.delta_2_north, 
+                                                self.delta_2_east, 
+                                                self.delta_2_down, 
+                                                self.delta_2_v_north, 
+                                                self.delta_2_v_east, 
+                                                self.delta_2_v_down, 
+                                                self.delta_2_time])
+        
+        heading_mission_vars = np.concatenate([self.delta_altitude, self.delta_heading, self.delta_speed, self.delta_time])
 
         #lets build observation.
-        norm_obs = np.zeros(44)
+        norm_obs = np.zeros(51)
         norm_obs[0:3] = self.mission_declarations
 
         #heading task representation
@@ -306,7 +375,7 @@ class OpusTrainingTask(BaseTask):
         norm_obs[6] /= 340 #delta speed (unit: mach)
         norm_obs[7] /= 100 #delta time (unit: 100s)
         #waypoint task representation
-        norm_obs[8:15] = waypoint_mission_vars
+        norm_obs[8:15] = waypoint_1_mission_vars
         norm_obs[8] /= 5000 #delta north (unit: 5km)
         norm_obs[9] /= 5000 #delta east (unit: 5km)
         norm_obs[10] /= 5000 #delta down (unit: 5km)
@@ -314,37 +383,45 @@ class OpusTrainingTask(BaseTask):
         norm_obs[12] /= 340 #delta v_east (unit: mach)
         norm_obs[13] /= 340 #delta v_down (unit: mach)
         norm_obs[14] /= 100 #delta time (unit: 100s)
-        
+        norm_obs[15:22] = waypoint_2_mission_vars
+        norm_obs[15] /= 5000
+        norm_obs[16] /= 5000
+        norm_obs[17] /= 5000
+        norm_obs[18] /= 340
+        norm_obs[19] /= 340
+        norm_obs[20] /= 340
+        norm_obs[21] /= 100
+
         #local state representation, for efficient aircraft handling
-        norm_obs[15] = self.ned_frame_state[0] / 5000 # 3. north (unit: 5km)
-        norm_obs[16] = self.ned_frame_state[1] / 5000 # 4. east (unit: 5km)
-        norm_obs[17] = self.ned_frame_state[2] / 5000 # 5. down (unit: 5km)
-        norm_obs[18] = self.ned_frame_state[3] / 340  # 6. v_north (unit: mach)
-        norm_obs[19] = self.ned_frame_state[4] / 340 # 7. v_east (unit: mach)
-        norm_obs[20] = self.ned_frame_state[5] / 340 # 8. v_down (unit: mach)
-        norm_obs[21] = self.ned_frame_state[6] / 340 # 9. u (unit: mach)
-        norm_obs[22] = self.ned_frame_state[7] / 340 # 10. v (unit: mach)
-        norm_obs[23] = self.ned_frame_state[8] / 340 # 11. w (unit: mach)
-        norm_obs[24] = self.ned_frame_state[9] / 340 # 12. udot (unit: mach)
-        norm_obs[25] = self.ned_frame_state[10] / 340    # 13. vdot (unit: mach)
-        norm_obs[26] = self.ned_frame_state[11] / 340    # 14. wdot (unit: mach)
-        norm_obs[27] = self.ned_frame_state[12]          # 15. attitude_w (quat.w)
-        norm_obs[28] = self.ned_frame_state[13]          # 16. attitude_x (quat.x)
-        norm_obs[29] = self.ned_frame_state[14]          # 17. attitude_y (quat.y)
-        norm_obs[30] = self.ned_frame_state[15]          # 18. attitude_z (quat.z)
-        norm_obs[31] = self.ned_frame_state[16]          # 19. attitude_rate_w (quat.w)
-        norm_obs[32] = self.ned_frame_state[17]          # 20. attitude_rate_x (quat.x)
-        norm_obs[33] = self.ned_frame_state[18]          # 21. attitude_rate_y (quat.y)
-        norm_obs[34] = self.ned_frame_state[19]          # 22. attitude_rate_z (quat.z)
-        norm_obs[35] = self.ned_frame_state[20]          # 23. heading (cos)
-        norm_obs[36] = self.ned_frame_state[21]          # 24. heading (sin)
-        norm_obs[37] = self.ned_frame_state[22] / 340    # 25. vc (unit: mach)
-        norm_obs[38] = self.ned_frame_state[23] / 5000    # 26. crosswind (unit: 5 km/s)
-        norm_obs[39] = self.ned_frame_state[24] / 5000    # 27. headwind (unit: 5 km/s)
-        norm_obs[40] = self.action_props[0]              # 28. aileron cmd norm
-        norm_obs[41] = self.action_props[1]              # 29. elevator cmd norm
-        norm_obs[42] = self.action_props[2]              # 30. rudder cmd norm
-        norm_obs[43] = self.action_props[3]              # 31. throttle cmd norm
+        norm_obs[22] = self.ned_frame_state[0] / 5000 # 3. north (unit: 5km)
+        norm_obs[23] = self.ned_frame_state[1] / 5000 # 4. east (unit: 5km)
+        norm_obs[24] = self.ned_frame_state[2] / 5000 # 5. down (unit: 5km)
+        norm_obs[25] = self.ned_frame_state[3] / 340  # 6. v_north (unit: mach)
+        norm_obs[26] = self.ned_frame_state[4] / 340 # 7. v_east (unit: mach)
+        norm_obs[27] = self.ned_frame_state[5] / 340 # 8. v_down (unit: mach)
+        norm_obs[28] = self.ned_frame_state[6] / 340 # 9. u (unit: mach)
+        norm_obs[29] = self.ned_frame_state[7] / 340 # 10. v (unit: mach)
+        norm_obs[30] = self.ned_frame_state[8] / 340 # 11. w (unit: mach)
+        norm_obs[31] = self.ned_frame_state[9] / 340 # 12. udot (unit: mach)
+        norm_obs[32] = self.ned_frame_state[10] / 340    # 13. vdot (unit: mach)
+        norm_obs[33] = self.ned_frame_state[11] / 340    # 14. wdot (unit: mach)
+        norm_obs[34] = self.ned_frame_state[12]          # 15. attitude_w (quat.w)
+        norm_obs[35] = self.ned_frame_state[13]          # 16. attitude_x (quat.x)
+        norm_obs[36] = self.ned_frame_state[14]          # 17. attitude_y (quat.y)
+        norm_obs[37] = self.ned_frame_state[15]          # 18. attitude_z (quat.z)
+        norm_obs[38] = self.ned_frame_state[16]          # 19. attitude_rate_w (quat.w)
+        norm_obs[39] = self.ned_frame_state[17]          # 20. attitude_rate_x (quat.x)
+        norm_obs[40] = self.ned_frame_state[18]          # 21. attitude_rate_y (quat.y)
+        norm_obs[41] = self.ned_frame_state[19]          # 22. attitude_rate_z (quat.z)
+        norm_obs[42] = self.ned_frame_state[20]          # 23. heading (cos)
+        norm_obs[43] = self.ned_frame_state[21]          # 24. heading (sin)
+        norm_obs[44] = self.ned_frame_state[22] / 340    # 25. vc (unit: mach)
+        norm_obs[45] = self.ned_frame_state[23] / 5000    # 26. crosswind (unit: 5 km/s)
+        norm_obs[46] = self.ned_frame_state[24] / 5000    # 27. headwind (unit: 5 km/s)
+        norm_obs[47] = self.action_props[0]              # 28. aileron cmd norm
+        norm_obs[48] = self.action_props[1]              # 29. elevator cmd norm
+        norm_obs[49] = self.action_props[2]              # 30. rudder cmd norm
+        norm_obs[50] = self.action_props[3]              # 31. throttle cmd norm
         norm_obs = np.clip(norm_obs, self.observation_space.low, self.observation_space.high)
         return norm_obs
 

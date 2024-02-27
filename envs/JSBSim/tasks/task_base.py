@@ -15,7 +15,6 @@ class BaseTask(ABC):
         self.config = config
         self.reward_functions = []
         self.termination_conditions = []
-        self.curriculum = None
         self.load_variables()
         self.load_observation_space()
         self.load_action_space()
@@ -61,8 +60,6 @@ class BaseTask(ABC):
         for reward_function in self.reward_functions:
             reward_function.reset(self, env)
             
-        if self.curriculum is not None:
-            self.curriculum.reset(self, env)
 
     def step(self, env):
         """ Task-specific step

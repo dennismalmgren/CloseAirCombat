@@ -51,7 +51,6 @@ class OpusCurriculum(BaseCurriculum):
             agent.set_property_value(c.travel_1_target_position_h_sl_m, current_altitude)
             agent.set_property_value(c.travel_1_target_attitude_psi_rad, current_heading_rad)
             agent.set_property_value(c.travel_1_target_velocities_u_mps, current_speed)
-            agent.set_property_value(c.heading_check_time, (self.check_interval + current_time))    
             agent.set_property_value(c.travel_1_target_time_s, (self.check_interval + current_time))
             
     def step(self, env, agent_id, info= {}):
@@ -68,7 +67,7 @@ class OpusCurriculum(BaseCurriculum):
         """
         agent = env.agents[agent_id]
         current_time = agent.get_property_value(c.simulation_sim_time_sec)
-        check_time = agent.get_property_value(c.heading_check_time)
+        check_time = agent.get_property_value(c.travel_1_target_time_s)
         #check time is initially 0. This task works because the agent was initialized with a delta heading of 0 (target heading == current heading)
         # check heading when simulation_time exceed check_time
 
@@ -94,7 +93,6 @@ class OpusCurriculum(BaseCurriculum):
             agent.set_property_value(c.travel_1_target_velocities_u_mps, new_velocities_u)
             
             new_time = delta_time + current_time
-            agent.set_property_value(c.heading_check_time, new_time)
             agent.set_property_value(c.travel_1_target_time_s, new_time)
             
             self.heading_turn_counts += 1
