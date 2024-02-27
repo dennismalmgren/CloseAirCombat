@@ -64,7 +64,7 @@ def apply_env_transforms(env):# max_episode_steps=1000):
             InitTracker(),
             StepCounter(),
             DoubleToFloat(),
-            RewardScaling(loc=0.0, scale=0.1),
+            RewardScaling(loc=0.0, scale=0.001),
             RewardSum(),
             CatFrames(5, dim=-1, in_keys=['observation'])
         ),

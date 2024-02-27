@@ -16,7 +16,7 @@ env:
 # Logger
 logger:
   backend: wandb
-  mode: disabled
+  mode: online
   eval_iter: 10_000
   exp_name: opus_heading
 

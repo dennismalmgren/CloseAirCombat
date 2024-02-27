@@ -15,7 +15,7 @@ class OpusCurriculum(BaseCurriculum):
         self.max_altitude_increment = 2000 #m
         self.max_velocities_u_increment = 100 #m/s
         self.check_interval = 30 #seconds
-        self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] + [1.0] * 10
+        self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] + [1.0] * 100
         self.heading_turn_counts = 0
 
     def get_init_state(self, agent_id):
