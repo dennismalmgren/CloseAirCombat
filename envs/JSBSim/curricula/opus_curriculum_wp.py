@@ -107,9 +107,10 @@ class OpusCurriculumWaypoints(BaseCurriculum):
     
     def create_waypoints(self, env):
         for agent in env.agents.values():
-            current_north = agent.get_property_value(c.position_north_m)
-            current_east = agent.get_property_value(c.position_east_m)
-            current_down = agent.get_property_value(c.position_down_m)
+            agent_alt = agent.get_property_value(c.position_h_sl_m)                  # 0. altitude  (unit: m)
+            agent_lat = agent.get_property_value(c.position_lat_geod_deg)            # 1. latitude geodetic (unit: deg)
+            agent_lon = agent.get_property_value(c.position_long_gc_deg)           
+            current_north, current_east, current_down = LLA2NED(agent_lat, agent_lon, agent_alt, env.task.lat0, env.task.lon0, env.task.alt0)
             wp1 = (current_north, current_east, current_down)
             wp2 = (current_north, current_east + 2000, current_down + 1000)
             wp3 = (current_north + 2000, current_east, current_down - 1000)
@@ -122,7 +123,7 @@ class OpusCurriculumWaypoints(BaseCurriculum):
         available_waypoint_indices.remove(current_waypoint_ind)
         
         available_waypoint_indices = list(available_waypoint_indices)
-        available_waypoint_indices = self.env.np_random.permute(available_waypoint_indices)
+        available_waypoint_indices = env.np_random.permutation(available_waypoint_indices)
 
         next_waypoint_ind_ind = env.np_random.integers(0, 3)
         next_waypoint_ind = available_waypoint_indices[next_waypoint_ind_ind]
@@ -132,7 +133,7 @@ class OpusCurriculumWaypoints(BaseCurriculum):
     #     if task_ind == 1:
 
     def update_waypoint_1(self, waypoint, mach_limit, env, agent):
-        lla1 = NED2LLA(waypoint.north, waypoint.east, waypoint.down, 
+        lla1 = NED2LLA(waypoint[0], waypoint[1], waypoint[2], 
                           env.task.lat0, env.task.lon0, env.task.alt0)
             
         agent.set_property_value(c.wp_1_1_target_position_h_sl_m, lla1[2])
@@ -141,7 +142,7 @@ class OpusCurriculumWaypoints(BaseCurriculum):
         agent.set_property_value(c.travel_1_target_velocities_u_mps, mach_limit * 340)
 
     def update_waypoint_2(self, waypoint, mach_limit, env, agent):
-        lla2 = NED2LLA(waypoint.north, waypoint.east, waypoint.down, 
+        lla2 = NED2LLA(waypoint[2], waypoint[1], waypoint[2], 
                           env.task.lat0, env.task.lon0, env.task.alt0)
         agent.set_property_value(c.wp_1_2_target_position_h_sl_m, lla2[2])
         agent.set_property_value(c.wp_1_2_target_position_lat_geod_rad, lla2[0])
@@ -157,11 +158,13 @@ class OpusCurriculumWaypoints(BaseCurriculum):
 
             current_waypoint_ind = env.np_random.integers(1, 4)            
             current_waypoint = self.waypoints[current_waypoint_ind]
-            current_mach_limit = self.mach_numbers[current_waypoint_ind]
+            current_mach_limit_ind = env.np_random.integers(0, 3)
+            current_mach_limit = self.mach_numbers[current_mach_limit_ind]
 
             next_waypoint_ind = self.select_next_waypoint(env, current_waypoint_ind)
+            next_mach_limit_ind = env.np_random.integers(0, 3)
             next_waypoint = self.waypoints[next_waypoint_ind]
-            next_mach_limit = self.mach_numbers[next_waypoint_ind]
+            next_mach_limit = self.mach_numbers[next_mach_limit_ind]
             self.waypoint_inds = [current_waypoint_ind, next_waypoint_ind]
             self.waypoints = [current_waypoint, next_waypoint]
             self.mach_limit = [current_mach_limit, next_mach_limit]
@@ -183,20 +186,32 @@ class OpusCurriculumWaypoints(BaseCurriculum):
             (tuple): (done, success, info)
         """
         agent = env.agents[agent_id]
-        current_north = agent.get_property_value(c.position_north_m)
-        current_east = agent.get_property_value(c.position_east_m)
-        current_down = agent.get_property_value(c.position_down_m)
-        #reach if within 200m.
-        if np.linalg.norm(np.array([current_north - self.current_waypoint[0], 
-                             current_east - self.current_waypoint[1]])) < 100 and \
-            np.norm(np.array([current_down - self.current_waypoint[2]])) < 30:
-            current_task_id = agent.get_property_value(c.current_task_id)
-            current_waypoint_ind = self.waypoint_inds[int(current_task_id) - 1]
-            next_waypoint_ind = self.select_next_waypoint(env, current_waypoint_ind)
-            if current_task_id == 1:
-                self.update_waypoint_1(self.waypoints[next_waypoint_ind], self.mach_limit[next_waypoint_ind], env, agent)
-                agent.set_property_value(c.current_task_id, 3 - current_task_id)
-            else:
-                self.update_waypoint_2(self.waypoints[next_waypoint_ind], self.mach_limit[next_waypoint_ind], env, agent)
-                agent.set_property_value(c.current_task_id, 3 - current_task_id)
+        agent_alt = agent.get_property_value(c.position_h_sl_m)                  # 0. altitude  (unit: m)
+        agent_lat = agent.get_property_value(c.position_lat_geod_deg)            # 1. latitude geodetic (unit: deg)
+        agent_lon = agent.get_property_value(c.position_long_gc_deg)           
+        current_north, current_east, current_down = LLA2NED(agent_lat, agent_lon, agent_alt, env.task.lat0, env.task.lon0, env.task.alt0)
+        active_task = int(agent.get_property_value(c.current_task_id))
+        active_waypoint_index = active_task - 1
+        if active_task == 1:
+            active_task_type = int(agent.get_property_value(c.task_1_type_id))
+        else:
+            active_task_type = int(agent.get_property_value(c.task_2_type_id))
+
+        if active_task_type != 2:
+            return
+        else:
+            dist = np.linalg.norm(np.array([current_north - self.waypoints[active_waypoint_index][0], 
+                                current_east - self.waypoints[active_waypoint_index][1], 
+                                current_down - self.waypoints[active_waypoint_index][2]]))
+            if dist < 100:
+                current_task_id = agent.get_property_value(c.current_task_id)
+                current_waypoint_ind = self.waypoint_inds[int(current_task_id) - 1]
+                next_waypoint_ind = self.select_next_waypoint(env, current_waypoint_ind)
+                next_mach_ind = env.np_random.integers(0, 3)
+                if current_task_id == 1:
+                    self.update_waypoint_1(self.waypoints[next_waypoint_ind], self.mach_limit[next_mach_ind], env, agent)
+                    agent.set_property_value(c.current_task_id, 3 - current_task_id)
+                else:
+                    self.update_waypoint_2(self.waypoints[next_waypoint_ind], self.mach_limit[next_mach_ind], env, agent)
+                    agent.set_property_value(c.current_task_id, 3 - current_task_id)
     

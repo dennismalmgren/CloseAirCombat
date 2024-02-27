@@ -16,8 +16,8 @@ class OpusTrainingEnv(BaseEnv):
 
     #set by curriculum.
     def load_curriculum(self):
-        #self.curriculum = OpusCurriculumWaypoints(self.config)
-        self.curriculum = OpusCurriculum(self.config)
+        self.curriculum = OpusCurriculumWaypoints(self.config)
+        #self.curriculum = OpusCurriculum(self.config)
 
     def load_task(self):
         #taskname = getattr(self.config, 'task', None)

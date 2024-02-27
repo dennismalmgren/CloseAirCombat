@@ -2,7 +2,7 @@ import numpy as np
 from gymnasium import spaces
 from .task_base import BaseTask
 from ..core.catalog import Catalog as c
-from ..reward_functions import SafeAltitudeReward, OpusHeadingReward, OpusWaypointReward
+from ..reward_functions import SafeAltitudeReward, OpusHeadingReward, OpusWaypointReward, OpusWaypointPotentialReward
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout
 from ..utils.utils import LLA2NED, NED2LLA
 
@@ -18,6 +18,7 @@ class OpusTrainingTask(BaseTask):
         self.reward_functions = [
             OpusHeadingReward(self.config),
             OpusWaypointReward(self.config),
+            OpusWaypointPotentialReward(self.config),
             SafeAltitudeReward(self.config),
         ]
 
@@ -213,43 +214,33 @@ class OpusTrainingTask(BaseTask):
             self.delta_2_v_down = np.array([0])
             self.delta_2_time = np.array([0])
         else:
-            #construct the waypoint task observation
-            # This uses mission_vars 11-14
-            #c.wp_1_1_target_position_h_sl_m,
-            #c.wp_1_1_target_position_lat_geod_rad,
-            #c.wp_1_1_target_position_long_gc_rad,
-            #c.wp_1_1_target_velocities_v_north_mps,
-            #c.wp_1_1_target_velocities_v_east_mps,
-            #c.wp_1_1_target_velocities_v_down_mps,
-            #c.wp_1_1_target_time_s,
-            #convert target altitude to NED.
+            self.delta_1_v_north = np.array([0])
+            self.delta_1_v_east = np.array([0])
+            self.delta_1_v_down = np.array([0])
+            self.delta_1_time = np.array([0])
+            self.delta_2_v_north = np.array([0])
+            self.delta_2_v_east = np.array([0])
+            self.delta_2_v_down = np.array([0])
+            self.delta_2_time = np.array([0])
+
             ned_target = LLA2NED(self.mission_vars[12] * 180 / np.pi, self.mission_vars[13] * 180 / np.pi, self.mission_vars[11], self.lat0, self.lon0, self.alt0)
             #construct the waypoint task observation.
             self.delta_1_north = np.array([ned_target[0] - self.ned_frame_state[0]])
             self.delta_1_east = np.array([ned_target[1] - self.ned_frame_state[1]])
             self.delta_1_down = np.array([ned_target[2] - self.ned_frame_state[2]])
-            self.delta_1_v_north = np.array([self.mission_vars[14] - self.ned_frame_state[3]])
-            self.delta_1_v_east = np.array([self.mission_vars[15] - self.ned_frame_state[4]])
-            self.delta_1_v_down = np.array([self.mission_vars[16] - self.ned_frame_state[5]])
-            self.delta_1_time = np.array([self.mission_vars[17] - current_time])
+#            self.delta_1_v_north = np.array([self.mission_vars[14] - self.ned_frame_state[3]])
+#            self.delta_1_v_east = np.array([self.mission_vars[15] - self.ned_frame_state[4]])
+#            self.delta_1_v_down = np.array([self.mission_vars[16] - self.ned_frame_state[5]])
+#            self.delta_1_time = np.array([self.mission_vars[17] - current_time])
 
-            #construct the waypoint task observation
-            # This uses mission_vars 15-18
-            #c.wp_1_2_target_position_h_sl_m,
-            #c.wp_1_2_target_position_lat_geod_rad,
-            #c.wp_1_2_target_position_long_gc_rad,
-            #c.wp_1_2_target_velocities_v_north_mps,
-            #c.wp_1_2_target_velocities_v_east_mps,
-            #c.wp_1_2_target_velocities_v_down_mps,
-            #c.wp_1_2_target_time_s,
             ned_target = LLA2NED(self.mission_vars[20] * 180 / np.pi, self.mission_vars[21] * 180 / np.pi, self.mission_vars[19], self.lat0, self.lon0, self.alt0)
             #construct the waypoint task observation.
             self.delta_2_north = np.array([ned_target[0] - self.ned_frame_state[0]])
             self.delta_2_east = np.array([ned_target[1] - self.ned_frame_state[1]])
             self.delta_2_down = np.array([ned_target[2] - self.ned_frame_state[2]])
-            self.delta_2_v_north = np.array([self.mission_vars[21] - self.ned_frame_state[3]])
-            self.delta_2_v_east = np.array([self.mission_vars[22] - self.ned_frame_state[4]])
-            self.delta_2_v_down = np.array([self.mission_vars[23] - self.ned_frame_state[5]])
+#            self.delta_2_v_north = np.array([self.mission_vars[21] - self.ned_frame_state[3]])
+#            self.delta_2_v_east = np.array([self.mission_vars[22] - self.ned_frame_state[4]])
+#            self.delta_2_v_down = np.array([self.mission_vars[23] - self.ned_frame_state[5]])
             self.delta_2_time = np.array([self.mission_vars[24] - current_time])
 
 

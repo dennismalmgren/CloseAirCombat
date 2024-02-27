@@ -8,3 +8,4 @@ from .shoot_penalty_reward import ShootPenaltyReward
 from .safe_altitude_reward import SafeAltitudeReward
 from .opus_heading_reward import OpusHeadingReward
 from .opus_waypoint_reward import OpusWaypointReward
+from .opus_waypoint_potential_reward import OpusWaypointPotentialReward

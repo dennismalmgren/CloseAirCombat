@@ -154,12 +154,44 @@ class CruiseMissile:
 
         # If reached, call step_path and continue
 
+
 linkoping = (58.40160, 15.63308, 1000.0)
 jonkoping = (57.75882, 14.16009, 1000.0)
 norrkoping = (58.58341, 16.23918, 1000.0)
 kaliningrad = (54.73032, 20.45923, 1000.0)
 stpetersburg = (59.94279, 30.24516, 1000.0)
 knackpunkt = (58.25883, 27.71385, 1000.0)
+
+# cm1 = ['cruise_missile_1',
+#        stpetersburg,
+#        [knackpunkt, linkoping]]
+# cm2 = ['cruise_missile_2',
+#        stpetersburg,
+#        [knackpunkt, linkoping]]
+# cm3 = ['cruise_missile_3',
+#        stpetersburg,
+#        [knackpunkt, jonkoping]]
+# cm4 = ['cruise_missile_4',
+#        stpetersburg,
+#        [knackpunkt, jonkoping]]
+# cm5 = ['cruise_missile_5',
+#        stpetersburg,
+#        [knackpunkt, norrkoping]]
+# cm6 = ['cruise_missile_6',
+#        stpetersburg,
+#        [knackpunkt, linkoping]]
+# cm7 = ['cruise_missile_7',
+#        stpetersburg,
+#        [knackpunkt, norrkoping]]
+# cm8 = ['cruise_missile_8',
+#        stpetersburg,
+#        [knackpunkt, linkoping]]
+# cm9 = ['cruise_missile_9',
+#        stpetersburg,
+#        [knackpunkt, norrkoping]]
+# cm10 = ['cruise_missile_10',
+#         stpetersburg,
+#         [knackpunkt, jonkoping]]
 
 cm1 = ['cruise_missile_1',
        knackpunkt,
@@ -230,7 +262,7 @@ def main(args=None):
     print('Creating cruise missiles')
     boundingRect = BoundingRect(56.98033, 14.07798, 58.74902, 20.82290)
 
-    for cm in [cms[1]]:
+    for cm in [cms[1]]: 
         randomize_starting_position(cm)
         randomize_first_turn_position(cm)
         print('Starting at Lat, Lon, Alt: ', cm[1])
