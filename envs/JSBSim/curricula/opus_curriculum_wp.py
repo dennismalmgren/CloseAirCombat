@@ -11,19 +11,20 @@ class OpusCurriculumWaypoints(BaseCurriculum):
     """
     def __init__(self, config):
         super().__init__(config)
-        self.min_waypoint_distance = 1000 #m
-        self.min_waypoint_altitude = 1000 #m 
-        self.max_waypoint_altitude = 10000 #m
-        self.min_north = 0 #m
-        self.max_north = 200_000 #m
-        self.min_east = 0 #m
-        self.max_east = 400_000 #m
-        self.min_speed_x = 100  #m/s
-        self.max_speed_x = 450  #m/s
-        self.min_speed_y = 100  #m/s
-        self.max_speed_y = 450  #m/s
-        self.min_speed_z = 0  #m/s
-        self.max_speed_z = 50  #m/s
+        self.waypoints = None
+        # self.min_waypoint_distance = 1000 #m
+        # self.min_waypoint_altitude = 1000 #m 
+        # self.max_waypoint_altitude = 10000 #m
+        # self.min_north = 0 #m
+        # self.max_north = 200_000 #m
+        # self.min_east = 0 #m
+        # self.max_east = 400_000 #m
+        # self.min_speed_x = 100  #m/s
+        # self.max_speed_x = 450  #m/s
+        # self.min_speed_y = 100  #m/s
+        # self.max_speed_y = 450  #m/s
+        # self.min_speed_z = 0  #m/s
+        # self.max_speed_z = 50  #m/s
 
 
     def get_init_state(self, agent_id):
@@ -104,55 +105,64 @@ class OpusCurriculumWaypoints(BaseCurriculum):
         agent.set_property_value(c.wp_1_2_target_velocities_v_down_mps, -wp1[5])
         agent.set_property_value(c.wp_1_2_target_time_s, current_time + wp1[6])
     
+    def create_waypoints(self, env):
+        for agent in env.agents.values():
+            current_north = agent.get_property_value(c.position_north_m)
+            current_east = agent.get_property_value(c.position_east_m)
+            current_down = agent.get_property_value(c.position_down_m)
+            wp1 = (current_north, current_east, current_down)
+            wp2 = (current_north, current_east + 2000, current_down + 1000)
+            wp3 = (current_north + 2000, current_east, current_down - 1000)
+            wp4 = (current_north + 2000, current_east+2000, current_down)
+            self.waypoints = [wp1, wp2, wp3, wp4]
+            self.mach_numbers = [0.4, 0.6, 0.8]
+
+    def select_next_waypoint(self, env, current_waypoint_ind):
+        available_waypoint_indices = set(np.arange(0, 4))
+        available_waypoint_indices.remove(current_waypoint_ind)
+        
+        available_waypoint_indices = list(available_waypoint_indices)
+        available_waypoint_indices = self.env.np_random.permute(available_waypoint_indices)
+
+        next_waypoint_ind_ind = env.np_random.integers(0, 3)
+        next_waypoint_ind = available_waypoint_indices[next_waypoint_ind_ind]
+        return next_waypoint_ind
+
+    # def set_waypoint_task(self, env, agent, waypoint_ind, task_ind):
+    #     if task_ind == 1:
+
     def reset(self, env):
-        for agent_id in env.agents:
-            agent = env.agents[agent_id]
-            self.create_random_waypoint(agent, env)
+        self.create_waypoints(env)
+        for agent in env.agents.values():
+            current_waypoint_ind = env.np_random.integers(1, 4)
+            next_waypoint_ind = self.select_next_waypoint(env, current_waypoint_ind)
             
+            self.current_waypoint = self.waypoints[current_waypoint_ind]
+            self.current_mach = self.mach_numbers[current_waypoint_ind]
+            self.current_waypoint_ind = current_waypoint_ind
+            self.next_waypoint = self.waypoints[next_waypoint_ind]
+            self.next_mach = self.mach_numbers[next_waypoint_ind]
             
-            #To reach a waypoint, this implementation
-            # 1) generates a "heading" or rather, 
-            #    intermediate waypoint (x, y, z), together with 
-            #    expected speed on arrival (vx, vy, vz)
-            #    together with expected time to arrive at the intermediate waypoint.
-            # 2) The total time to arrive at the final waypoint, which is a curving at the end.
-            # we therefore want to train our algorithm at 
-            # 1) "seeing" the delta w.r.t the two phases and 
-            # 2) rewarding planar flight during the first phase, followed by low jerk entry during the second phase.
-            # then we add the observations necessary for the other tasks.
+            agent.set_property_value(c.current_task_id, 1)
+            agent.set_property_value(c.task_1_type_id, 2) #1 for heading, 2 for waypoint.
+            agent.set_property_value(c.task_2_type_id, 2) #0 for no mission.
 
-            #A training scenario is therefore
-            # introduce a 'current task' parameter
-            # add two waypoints as 'missions'. 
-            # 1) single waypoint
-            # this is a follow heading-task followed by meet/hit a location at velocity constraints task.
-            #how do I represent those?
+            lla1 = NED2LLA(self.current_waypoint.north, self.current_waypoint.east, self.current_waypoint.down, 
+                          env.task.lat0, env.task.lon0, env.task.alt0)
             
-            
+            agent.set_property_value(c.wp_1_1_target_position_h_sl_m, lla1[2])
+            agent.set_property_value(c.wp_1_1_target_position_lat_geod_rad, lla1[0])
+            agent.set_property_value(c.wp_1_1_target_position_long_gc_rad, lla1[1])
+            agent.set_property_value(c.travel_1_target_velocities_u_mps, self.current_mach * 340)
 
+            lla2 = NED2LLA(self.next_waypoint.north, self.next_waypoint.east, self.next_waypoint.down, 
+                          env.task.lat0, env.task.lon0, env.task.alt0)
+            agent.set_property_value(c.wp_1_2_target_position_h_sl_m, lla2[2])
+            agent.set_property_value(c.wp_1_2_target_position_lat_geod_rad, lla2[0])
+            agent.set_property_value(c.wp_1_2_target_position_long_gc_rad, lla2[1])
+            agent.set_property_value(c.travel_2_target_velocities_u_mps, self.next_mach * 340)
 
-#   c.position_h_sl_m,                  # 0. altitude  (unit: m)
-#            c.position_lat_geod_deg,            # 1. latitude geodetic (unit: deg)
-#            c.position_long_gc_deg,             # 2. longitude geocentric (same as geodetic) (unit: deg)
-#            current_north = agent.get_property_value(c.position_north_m)
-#            current_east = agent.get_property_value(c.position_east_m)
-#            current_down = agent.get_property_value(c.position_down_m)
-#            current_speed_x = agent.get_property_value(c.velocities_v_north_mps)
-#            current_speed_y = agent.get_property_value(c.velocities_v_east_mps)
-#            current_speed_z = agent.get_property_value(c.velocities_v_down_mps)
-#            current_time = agent.get_property_value(c.simulation_sim_time_sec) #will be at least.
-#            current_heading_rad = agent.get_property_value(c.attitude_heading_true_rad) 
-#            current_speed = agent.get_property_value(c.velocities_u_mps) 
-#            current_time = agent.get_property_value(c.simulation_sim_time_sec) #will be at least.
-            #also: set task values so that they can be returned by reset.
- #           agent.set_property_value(c.current_task_id, 0) #0 or 1. we always go with 0 for now..
-#            agent.set_property_value(c.task_1_type_id, 1) #1 for heading, 2 for waypoint.
-#            agent.set_property_value(c.task_2_type_id, 0) #0 for no mission.
- #           agent.set_property_value(c.travel_1_target_position_h_sl_m, current_altitude)
- #           agent.set_property_value(c.travel_1_target_attitude_psi_rad, current_heading_rad)
- #           agent.set_property_value(c.travel_1_target_velocities_u_mps, current_speed)
- #           agent.set_property_value(c.heading_check_time, (self.check_interval + current_time))    
- #           agent.set_property_value(c.travel_1_target_time_s, (self.check_interval + current_time))
+         
             
     def step(self, env, agent_id, info= {}):
         """
@@ -167,6 +177,19 @@ class OpusCurriculumWaypoints(BaseCurriculum):
             (tuple): (done, success, info)
         """
         agent = env.agents[agent_id]
+        current_north = agent.get_property_value(c.position_north_m)
+        current_east = agent.get_property_value(c.position_east_m)
+        current_down = agent.get_property_value(c.position_down_m)
+        #reach if within 200m.
+        if np.norm(np.array([current_north - self.current_waypoint[0], 
+                             current_east - self.current_waypoint[1],
+                             current_down - self.current_waypoint[2]])) < 200:
+            current_task_id = agent.get_property_value(c.current_task_id)
+            next_task_id = 1 - current_task_id
+            agent.set_property_value(c.current_task_id, next_task_id)
+            if current_task_id == 1:
+
+
         current_time = agent.get_property_value(c.simulation_sim_time_sec)
         #waypoint_1_time = agent.get_property_value(c.wp_1_1_target_time_s)
         waypoint_2_time = agent.get_property_value(c.wp_1_2_target_time_s)
