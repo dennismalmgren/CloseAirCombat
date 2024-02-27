@@ -6,14 +6,14 @@ sim_freq: 60
 agent_interaction_steps: 12 # step 0.2s
 
 # termination config
-max_steps: 15_000            # episode length: 200s
+max_steps: 1_000            # episode length: 200s
 altitude_limit: 100
 acceleration_limit_x: 10.0
 acceleration_limit_y: 10.0
 acceleration_limit_z: 10.0
 
 # (latitude, longitude, altitude)
-battle_field_origin: [59.3, 18.0, 0.0]
+battle_field_origin: [56.98033, 14.07798, 0.0]
 
 # aircraft config
 aircraft_configs: {
@@ -21,8 +21,8 @@ aircraft_configs: {
     color: Red,
     model: f16,
     init_state: {
-      ic_long_gc_deg: 18.0,
-      ic_lat_geod_deg: 59.3,
+      ic_long_gc_deg: 14.07798,
+      ic_lat_geod_deg: 56.98033,
       ic_h_sl_ft: 16404,
       ic_psi_true_deg: 0.0,
       ic_u_fps: 800.0,

@@ -18,8 +18,8 @@ logger:
   backend: wandb
   mode: online
   exp_name: opus_heading
-  project: ppo_opus
-  test_interval: 1_000_000
+  project: opus_heading
+  test_interval: 100_000
   num_test_episodes: 5
 
 random:
@@ -30,7 +30,7 @@ random:
 # default is 0.98 but needs to be decreased for env
 # with small action space
 train:
-  save_interval: 1_000_000
+  save_interval: 100_000
 
 device: cuda:0
 # optim
