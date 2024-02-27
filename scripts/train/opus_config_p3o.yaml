@@ -8,7 +8,7 @@ env:
   task: "" #this is the task.
   exp_name: ${env.name}_OPUS
   max_episode_steps: 1000
-  seed: 42
+  seed: 55
   reward_scaling: 0.01
   frame_skip: 1
   from_pixels: false
@@ -23,7 +23,7 @@ logger:
   num_test_episodes: 5
 
 random:
-  seed: 42
+  seed: 55
 
 # Optimization
 #target_entropy_weight: 0.2

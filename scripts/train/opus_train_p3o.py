@@ -92,8 +92,8 @@ def main(cfg: DictConfig):  # noqa: F821
             else:
                 outputs_folder = "../../"
         
-        run_id = "2024-02-27/04-02-23/"
-        iteration = 4056000
+        run_id = "2024-02-27/10-39-34/"
+        iteration = 43064000
         model_load_filename = f"training_snapshot_{iteration}.pt"
         load_model_dir = outputs_folder + run_id
         print('Loading model from ' + load_model_dir)
@@ -270,7 +270,7 @@ def main(cfg: DictConfig):  # noqa: F821
                         'critic_optimizer': critic_optim.state_dict(),
                         "collected_frames": {"collected_frames": collected_frames}
                 }
-            torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
+                torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
         if logger:
             for key, value in log_info.items():
                 logger.log_scalar(key, value, collected_frames)
