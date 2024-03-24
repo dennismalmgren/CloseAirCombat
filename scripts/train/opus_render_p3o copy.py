@@ -49,8 +49,8 @@ def main(cfg: DictConfig):  # noqa: F821
     actor = policy_module
     critic = value_module
 
-    run_as_debug = False
-    load_from_saved_models = False
+    run_as_debug = True
+    load_from_saved_models = True
     load_from_debug = False
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
@@ -68,12 +68,12 @@ def main(cfg: DictConfig):  # noqa: F821
             outputs_folder = "../../"
     model_name = "training_snapshot"
     if load_from_saved_models:
-        model_name = "training_snapshot_waypoint"
+        model_name = "training_snapshot_heading"
     if load_from_saved_models:
         run_id = ""
     else:
-        run_id = "2024-02-28/04-48-34/"
-    iteration = 8208000
+        run_id = "2024-02-26/13-17-00/"
+    iteration = 10208000
     model_load_filename = f"{model_name}_{iteration}.pt"
     load_model_dir = outputs_folder + run_id
     print('Loading model from ' + load_model_dir)
@@ -98,6 +98,7 @@ def main(cfg: DictConfig):  # noqa: F821
         action_count = 0
         while not done:
             render_td = actor(render_td)
+            render_td['action'] = torch.tensor([[0.0, 0.0, 0.0, 0.5]])
             render_td = eval_env.step(render_td)
             render_episode_rewards += render_td["next", "reward"].sum(-2).item()
             eval_env.render(mode='txt', filepath=f'{run_dir}/{exp_name}.txt.acmi')

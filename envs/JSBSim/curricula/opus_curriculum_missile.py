@@ -74,7 +74,7 @@ class OpusCurriculumMissile(BaseCurriculum):
         for agent_id in env.agents:
             
             init_heading_deg = env.np_random.uniform(0., 180.)
-            init_altitude_m = env.np_random.uniform(2500., 9000.)
+            init_altitude_m = env.np_random.uniform(4500., 9000.)
             init_velocities_u_mps = env.np_random.uniform(120., 365.)
 
             agent_init_states[agent_id] = {

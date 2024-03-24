@@ -12,11 +12,11 @@ class OpusWaypointPotentialReward(BaseRewardFunction):
         super().__init__(config)
         self.reward_item_names = [self.__class__.__name__ + item for item in ['', 
                                                                               '_wp_approach_r']]
-        self.is_potential = True
-        self.time_taken = 0
+        #self.is_potential = True
+        #self.time_taken = 0
 
-    def reset(self, task, env):
-        self.time_taken += 1
+    #def reset(self, task, env):
+        #self.time_taken += 1
 
     def get_reward(self, task, env, agent_id):
         """
@@ -52,12 +52,13 @@ class OpusWaypointPotentialReward(BaseRewardFunction):
             agent_lat = agent.get_property_value(c.position_lat_geod_deg)            # 1. latitude geodetic (unit: deg)
             agent_lon = agent.get_property_value(c.position_long_gc_deg)           
             current_north, current_east, current_down = LLA2NED(agent_lat, agent_lon, agent_alt, env.task.lat0, env.task.lon0, env.task.alt0)
-            dist = np.linalg.norm(np.array([current_north - curriculum.waypoints[active_waypoint_index][0], 
-                             current_east - curriculum.waypoints[active_waypoint_index][1], 
-                             current_down - curriculum.waypoints[active_waypoint_index][2]]))
-            dist_error_scale = 200  # m
+
+            dist = np.linalg.norm(np.array([current_north - curriculum.target_waypoints[active_waypoint_index][0], 
+                             current_east - curriculum.target_waypoints[active_waypoint_index][1], 
+                             current_down - curriculum.target_waypoints[active_waypoint_index][2]]))
+            dist_error_scale = 2000  # m
             wp_approach_r = math.exp(-(dist / dist_error_scale) ** 2)
  
-            reward = wp_approach_r * (100_000 - self.time_taken) / 100_000
+            reward = wp_approach_r
             return self._process(reward, agent_id, (wp_approach_r,))
     

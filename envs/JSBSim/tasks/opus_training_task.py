@@ -16,7 +16,7 @@ class OpusTrainingTask(BaseTask):
         self.n0, self.e0, self.u0 = 0, 0, 0
 
         self.reward_functions = [
-            OpusHeadingReward(self.config),
+            #OpusHeadingReward(self.config),
             OpusWaypointReward(self.config),
             OpusWaypointPotentialReward(self.config),
             SafeAltitudeReward(self.config),
@@ -233,7 +233,7 @@ class OpusTrainingTask(BaseTask):
 #            self.delta_1_v_down = np.array([self.mission_vars[16] - self.ned_frame_state[5]])
 #            self.delta_1_time = np.array([self.mission_vars[17] - current_time])
 
-            ned_target = LLA2NED(self.mission_vars[20] * 180 / np.pi, self.mission_vars[21] * 180 / np.pi, self.mission_vars[19], self.lat0, self.lon0, self.alt0)
+            ned_target = LLA2NED(self.mission_vars[19] * 180 / np.pi, self.mission_vars[20] * 180 / np.pi, self.mission_vars[18], self.lat0, self.lon0, self.alt0)
             #construct the waypoint task observation.
             self.delta_2_north = np.array([ned_target[0] - self.ned_frame_state[0]])
             self.delta_2_east = np.array([ned_target[1] - self.ned_frame_state[1]])
@@ -241,7 +241,7 @@ class OpusTrainingTask(BaseTask):
 #            self.delta_2_v_north = np.array([self.mission_vars[21] - self.ned_frame_state[3]])
 #            self.delta_2_v_east = np.array([self.mission_vars[22] - self.ned_frame_state[4]])
 #            self.delta_2_v_down = np.array([self.mission_vars[23] - self.ned_frame_state[5]])
-            self.delta_2_time = np.array([self.mission_vars[24] - current_time])
+#            self.delta_2_time = np.array([self.mission_vars[24] - current_time])
 
 
 

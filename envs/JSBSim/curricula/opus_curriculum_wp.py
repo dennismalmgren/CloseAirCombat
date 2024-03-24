@@ -137,16 +137,16 @@ class OpusCurriculumWaypoints(BaseCurriculum):
                           env.task.lat0, env.task.lon0, env.task.alt0)
             
         agent.set_property_value(c.wp_1_1_target_position_h_sl_m, lla1[2])
-        agent.set_property_value(c.wp_1_1_target_position_lat_geod_rad, lla1[0])
-        agent.set_property_value(c.wp_1_1_target_position_long_gc_rad, lla1[1])
+        agent.set_property_value(c.wp_1_1_target_position_lat_geod_rad, lla1[0] * np.pi / 180.0)
+        agent.set_property_value(c.wp_1_1_target_position_long_gc_rad, lla1[1] * np.pi / 180.0)
         agent.set_property_value(c.travel_1_target_velocities_u_mps, mach_limit * 340)
 
     def update_waypoint_2(self, waypoint, mach_limit, env, agent):
         lla2 = NED2LLA(waypoint[2], waypoint[1], waypoint[2], 
                           env.task.lat0, env.task.lon0, env.task.alt0)
         agent.set_property_value(c.wp_1_2_target_position_h_sl_m, lla2[2])
-        agent.set_property_value(c.wp_1_2_target_position_lat_geod_rad, lla2[0])
-        agent.set_property_value(c.wp_1_2_target_position_long_gc_rad, lla2[1])
+        agent.set_property_value(c.wp_1_2_target_position_lat_geod_rad, lla2[0] * np.pi / 180.0)
+        agent.set_property_value(c.wp_1_2_target_position_long_gc_rad, lla2[1] * np.pi / 180.0)
         agent.set_property_value(c.travel_2_target_velocities_u_mps, mach_limit * 340)
 
     def reset(self, env):
@@ -165,12 +165,12 @@ class OpusCurriculumWaypoints(BaseCurriculum):
             next_mach_limit_ind = env.np_random.integers(0, 3)
             next_waypoint = self.waypoints[next_waypoint_ind]
             next_mach_limit = self.mach_numbers[next_mach_limit_ind]
-            self.waypoint_inds = [current_waypoint_ind, next_waypoint_ind]
-            self.waypoints = [current_waypoint, next_waypoint]
-            self.mach_limit = [current_mach_limit, next_mach_limit]
+            self.target_waypoint_inds = [current_waypoint_ind, next_waypoint_ind]
+            self.target_waypoints = [current_waypoint, next_waypoint]
+            self.target_mach_limits = [current_mach_limit, next_mach_limit]
 
-            self.update_waypoint_1(self.waypoints[0], self.mach_limit[0], env, agent)
-            self.update_waypoint_2(self.waypoints[1], self.mach_limit[1], env, agent)
+            self.update_waypoint_1(self.target_waypoints[0], self.target_mach_limits[0], env, agent)
+            self.update_waypoint_2(self.target_waypoints[1], self.target_mach_limits[1], env, agent)
          
             
     def step(self, env, agent_id, info= {}):
@@ -204,14 +204,16 @@ class OpusCurriculumWaypoints(BaseCurriculum):
                                 current_east - self.waypoints[active_waypoint_index][1], 
                                 current_down - self.waypoints[active_waypoint_index][2]]))
             if dist < 100:
-                current_task_id = agent.get_property_value(c.current_task_id)
-                current_waypoint_ind = self.waypoint_inds[int(current_task_id) - 1]
+                current_task_id = int(agent.get_property_value(c.current_task_id))
+                current_waypoint_ind = self.target_waypoint_inds[int(current_task_id) - 1]
                 next_waypoint_ind = self.select_next_waypoint(env, current_waypoint_ind)
                 next_mach_ind = env.np_random.integers(0, 3)
                 if current_task_id == 1:
-                    self.update_waypoint_1(self.waypoints[next_waypoint_ind], self.mach_limit[next_mach_ind], env, agent)
+                    self.update_waypoint_1(self.waypoints[next_waypoint_ind], self.mach_numbers[next_mach_ind], env, agent)
+
                     agent.set_property_value(c.current_task_id, 3 - current_task_id)
                 else:
-                    self.update_waypoint_2(self.waypoints[next_waypoint_ind], self.mach_limit[next_mach_ind], env, agent)
+                    self.update_waypoint_2(self.waypoints[next_waypoint_ind], self.mach_numbers[next_mach_ind], env, agent)
                     agent.set_property_value(c.current_task_id, 3 - current_task_id)
-    
+                self.target_waypoints[current_task_id - 1] = self.waypoints[next_waypoint_ind]
+                self.target_mach_limits[current_task_id - 1] = self.mach_numbers[next_mach_ind]
