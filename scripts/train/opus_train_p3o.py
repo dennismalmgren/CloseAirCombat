@@ -77,24 +77,36 @@ def main(cfg: DictConfig):  # noqa: F821
 
     load_model = False
     run_as_debug = False
+    load_from_saved_models = True
     load_from_debug = False
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
     if load_model:
+        #debug outputs is at the root.
+        #commandline outputs is at scripts/patrol/outputs
         if run_as_debug:
             if load_from_debug:
                 outputs_folder = "../../"
+            elif load_from_saved_models:
+                outputs_folder = "../../../scripts/train/saved_models/"
             else:
                 outputs_folder = "../../../scripts/train/outputs/"
         else:
             if load_from_debug:
-                outputs_folder = "../../../../../outputs"
+                outputs_folder = "../../../../../outputs/"
+            elif load_from_saved_models:
+                outputs_folder = "../../../saved_models/"
             else:
                 outputs_folder = "../../"
-        
-        run_id = "2024-02-27/13-23-12/"
-        iteration = 49072000
-        model_load_filename = f"training_snapshot_{iteration}.pt"
+        model_name = "training_snapshot"
+        if load_from_saved_models:
+            model_name = "training_snapshot_heading"
+        if load_from_saved_models:
+            run_id = ""
+        else:
+            run_id = "2024-02-28/00-21-18/"
+        iteration = 10208000
+        model_load_filename = f"{model_name}_{iteration}.pt"
         load_model_dir = outputs_folder + run_id
         print('Loading model from ' + load_model_dir)
         loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
@@ -102,9 +114,7 @@ def main(cfg: DictConfig):  # noqa: F821
         critic_state = loaded_state['model_critic']
         actor_optim_state = loaded_state['actor_optimizer']
         critic_optim_state = loaded_state['critic_optimizer']
-        collected_frames_dict = loaded_state["collected_frames"]
-        collected_frames = collected_frames_dict["collected_frames"]
-
+        collected_frames = loaded_state['collected_frames']['collected_frames']
         actor.load_state_dict(actor_state)
         critic.load_state_dict(critic_state)
         actor_optim.load_state_dict(actor_optim_state)

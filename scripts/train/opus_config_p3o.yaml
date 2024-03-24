@@ -30,7 +30,7 @@ random:
 # default is 0.98 but needs to be decreased for env
 # with small action space
 train:
-  save_interval: 100_000
+  save_interval: 500_000
 
 device: cuda:0
 # optim
