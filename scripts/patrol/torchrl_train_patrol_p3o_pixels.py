@@ -120,7 +120,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         )
 
     # Create test environment
-    test_env = make_parallel_env(1, device=device)
+    test_env = make_parallel_env(10, device=device)
     test_env.eval()
 
     # Main loop

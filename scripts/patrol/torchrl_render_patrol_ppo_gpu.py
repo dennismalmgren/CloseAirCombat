@@ -68,8 +68,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
         else:
             outputs_folder = "../../"
     
-    run_id = "2024-02-13/16-10-53/"
-    model_load_filename = "PPO_PPO_PatrolEnvGrid_20743568_24_02_13-16_10_54_iter_final.pt"
+    run_id = "2024-02-28/22-23-45/"
+    model_load_filename = "PPO_PPO_PatrolEnvGrid_c36a4c60_24_02_28-22_23_47_iter_final.pt"
     load_model_dir = outputs_folder + run_id + "saved_models/e3/"
 
     print('Loading model from ' + load_model_dir)
@@ -191,7 +191,6 @@ def main(cfg: "DictConfig"):  # noqa: F821
         pos = axs[1, 1].imshow(birth_history[t], cmap='viridis', vmin=0, vmax=b_max)
         if t == 0:
             fig.colorbar(pos, ax=axs[1, 1])
-
 
     video_path = 'visualization_video.mp4'
     with imageio.get_writer(video_path, fps=N) as writer:

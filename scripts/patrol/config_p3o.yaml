@@ -1,22 +1,22 @@
 # Environment
 env:
   env_name: PatrolEnvGrid
-  num_envs: 64
+  num_envs: 20
 
 # collector
 collector:
-  frames_per_batch: 512
-  total_frames: 100_000_000
+  frames_per_batch: 4000
+  total_frames: 10_000_000
 
 # logger
 logger:
   backend: wandb
-  project_name: torchrl_example_ppo
+  project_name: patrol_pixels
   group_name: null
   exp_name: PPO
   test_interval: 100_000
   num_test_episodes: 1
-  mode: disabled  
+  mode: online  
 
 # Optim
 optim:
@@ -29,8 +29,8 @@ optim:
 # loss
 loss:
   gamma: 0.99
-  mini_batch_size: 128
-  ppo_epochs: 5
+  mini_batch_size: 4000
+  ppo_epochs: 20
   gae_lambda: 0.95
   clip_epsilon: 0.2
   anneal_clip_epsilon: False
@@ -39,5 +39,5 @@ loss:
   loss_critic_type: l2
 
 model_save:
-  save_interval: 10_000_000
+  save_interval: 100_000
   experiment_name: e3

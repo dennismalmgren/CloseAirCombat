@@ -115,8 +115,7 @@ def main_batched():
     #New ones arrive from the east. Total of 0.01
     arrivals_per_sec = 0.01 #one every 100 seconds.
     w_b = arrivals_per_sec / height * time_scale * torch.ones((width, height), dtype=torch.float32)
-    w_b[:-1, :] = 0.0
-
+    w_b[:-10, :-10] = 0.0
     #survival
     p_s = 1 - 1 / (1.5*expected_missile_survival_time)
     #sampling time, seconds. 
@@ -173,38 +172,40 @@ def main_batched():
     w_u = w_u + w_b
     for i in range(3000):
         w_u = w_b + conv2d_layer(w_u)
-        if i % 50 == 0:
+        if i % 500 == 0:
             w_u_img = w_u.reshape((width, height)).t()
             plt.imshow(w_u_img.numpy())
+            plt.title('Growth at T={}'.format(i + 1))
             plt.show()
     print('done')
 
 def main():
     #we want 200km by 400 km area.
     #this means cells are 1000 by 1000 m.
-    width = 200
-    height = 400
+    width = 400
+    height = 200
     cell_width = 1000.0
     cell_height = 1000.0
     vehicle_speed = 200 #m / sec. 
-    time_scale = cell_width / vehicle_speed #takes 5 seconds to traverse a cell.
+    time_scale = 1.41*cell_width / vehicle_speed #takes 5 seconds to traverse a cell.
     #takes 1000 seconds to traverse the width of the grid.
     #this actually turns out to be "200 steps", i.e., the width of the grid, which is what we want, more or less.
     expected_missile_survival_time = cell_width * width / (vehicle_speed * time_scale) 
     #New ones arrive from the east. Total of 0.01
     arrivals_per_sec = 0.01 #one every 100 seconds.
     w_b = arrivals_per_sec / height * time_scale * torch.ones((width, height), dtype=torch.float32)
-    w_b[:-1, :] = 0.0
-
+    #w_b[:-10, :] = 0.0
+    w_b[:-10, :-10] = 0.0
+    #w_b[:-200, :] = 0.0
     #survival
-    p_s = 1 - 1 / (1.5*expected_missile_survival_time)
+    p_s = 1 - 1 / (2*expected_missile_survival_time)
     #sampling time, seconds. 
     tau = torch.tensor(time_scale, dtype=torch.float32) 
     #velocity vector
-    Phi_hat = torch.tensor([[-vehicle_speed], [0]], dtype=torch.float32) 
+    Phi_hat = torch.tensor([[-vehicle_speed], [vehicle_speed]], dtype=torch.float32) 
     #acceleration variance (mean acceleration is 0)
     #lets say 5%
-    sigma_w_2 = (0.05*vehicle_speed)**2
+    sigma_w_2 = (0.2*vehicle_speed)**2
     #hence..
     F_theta = torch.eye(2)
     F_theta_phi = tau * torch.eye(2, dtype=torch.float32)
@@ -219,7 +220,7 @@ def main():
     dist_var = F_theta_phi @ P @ F_theta_phi.t() + Q_theta
     distrib = D.MultivariateNormal(mean_dist, dist_var, validate_args=False)
     std = torch.sqrt(distrib.variance)
-    cutoff_stdevs = 3
+    cutoff_stdevs = 4
     kernel_size_x = int(math.ceil(cutoff_stdevs * std[0] / cell_width)) * 2 + 1
     kernel_size_y = int(math.ceil(cutoff_stdevs * std[1] / cell_height)) * 2 + 1
     
@@ -250,13 +251,23 @@ def main():
     plt.show()
     w_u = torch.zeros_like(w_b)
     w_u = w_u + w_b
+    sensor_loc_h = 100
+    sensor_loc_w = 350
     for i in range(3000):
         w_u = w_b + conv2d_layer(w_u)
-        if i % 500 == 0:
-            w_u_img = w_u.reshape((width, height)).t()
+        w_u_img_t = w_u.reshape((width, height))
+        if i == 400:
+
+        #if i > 500 and i < 520:
+           w_u_img_t[sensor_loc_w - 10: sensor_loc_w + 10][:, sensor_loc_h - 10:sensor_loc_h + 10] *= 0.1
+        #    sensor_loc_w -= 10
+        #if i > 500:
+        if i % 50 == 0:
+            w_u_img = w_u_img_t.t()
             plt.imshow(w_u_img.numpy())
+            plt.title('Growth at T={}'.format(i + 1))
             plt.show()
     print('done')
 
 if __name__ == "__main__":
-    main_batched()
+    main()
