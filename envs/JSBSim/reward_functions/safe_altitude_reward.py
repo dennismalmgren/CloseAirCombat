@@ -1,6 +1,6 @@
 import numpy as np
 from .reward_function_base import BaseRewardFunction
-
+from ..core.catalog import Catalog as c
 
 class SafeAltitudeReward(BaseRewardFunction):
     """
@@ -27,7 +27,9 @@ class SafeAltitudeReward(BaseRewardFunction):
         Returns:
             (float): reward
         """
-        ego_z_neu = -env.agents[agent_id].get_position()[-1] / 1000    # unit: km
+        #ego_z_neu = env.agents[agent_id].get_geodetic_deg()[2] / 1000    # unit: m
+        ego_z_neu = env.agents[agent_id].get_property_value(c.position_h_agl_ft) * 0.3048 / 1000    # unit: km
+        #ego_z_neu = -env.agents[agent_id].get_position()[-1] / 1000    # unit: km #this does not really work.
         ego_vz_neu = -env.agents[agent_id].get_velocity()[-1] / 340    # unit: mach
         Pv = 0.
         if ego_z_neu <= self.safe_altitude:
