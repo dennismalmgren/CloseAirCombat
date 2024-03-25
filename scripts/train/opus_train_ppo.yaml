@@ -57,7 +57,7 @@ collector:
   total_frames: 30_000_000
   frames_per_batch: 8000 #max_episode_steps * env_per_collector
   device: cpu
-  env_per_collector: 1
+  env_per_collector: 20
 
 network:
   hidden_sizes: [256, 256]

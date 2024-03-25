@@ -309,7 +309,7 @@ class ExtraCatalog(Property, Enum):
                                             )
                                             )
     position_h_agl_m = Property(
-        "position/h-agl-m", "altitude above ground level [m]", -500, 26000, acess="R",
+        "position/h-agl-m", "altitude above ground level [m]", -500, 26000, access="R",
         update=lambda sim: sim.set_property_value(
             ExtraCatalog.position_h_agl_m,
             sim.get_property_value(JsbsimCatalog.position_h_agl_ft) * 0.3048))
