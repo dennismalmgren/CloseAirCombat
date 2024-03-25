@@ -15,7 +15,7 @@ class OpusCurriculumHeading(BaseCurriculum):
         self.max_altitude_increment = 2000 #m
         self.max_velocities_u_increment = 100 #m/s
         self.check_interval = 30 #seconds
-        self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] + [1.0] * 100
+        self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] 
         self.heading_turn_counts = 0
 
     def get_init_state(self, agent_id):
@@ -72,7 +72,8 @@ class OpusCurriculumHeading(BaseCurriculum):
         # check heading when simulation_time exceed check_time
 
         if current_time >= check_time:
-            delta = self.increment_size[self.heading_turn_counts]
+            heading_turn_count = min(self.heading_turn_counts, len(self.increment_size) - 1)
+            delta = self.increment_size[heading_turn_count]
             delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
             delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
             delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_u_increment

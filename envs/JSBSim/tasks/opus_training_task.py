@@ -16,9 +16,9 @@ class OpusTrainingTask(BaseTask):
         self.n0, self.e0, self.u0 = 0, 0, 0
 
         self.reward_functions = [
-            #OpusHeadingReward(self.config),
-            OpusWaypointReward(self.config),
-            OpusWaypointPotentialReward(self.config),
+            OpusHeadingReward(self.config),
+            #OpusWaypointReward(self.config),
+            #OpusWaypointPotentialReward(self.config),
             SafeAltitudeReward(self.config),
         ]
 
