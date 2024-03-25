@@ -80,7 +80,7 @@ class OpusCurriculumHeading(BaseCurriculum):
             delta_time = env.np_random.uniform(10, 30)
             
             new_altitude = agent.get_property_value(c.travel_1_target_position_h_sl_m) + delta_altitude
-            new_altitude = min(max(600, new_altitude), 10000) #clamp to 500-10000m
+            new_altitude = min(max(1000, new_altitude), 10000) #clamp to 500-10000m
             agent.set_property_value(c.travel_1_target_position_h_sl_m, new_altitude)
 
             #move from current, not the one we were aiming for.
