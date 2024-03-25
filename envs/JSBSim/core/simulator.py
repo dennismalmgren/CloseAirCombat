@@ -30,6 +30,7 @@ class BaseSimulator(ABC):
         self._position = np.zeros(3)
         self._posture = np.zeros(3)
         self._velocity = np.zeros(3)
+        self._altitude_ground_m = 0.0
         logging.debug(f"{self.__class__.__name__}:{self.__uid} is created!")
 
     @property
@@ -47,7 +48,11 @@ class BaseSimulator(ABC):
     def get_geodetic_deg(self):
         """(latitude, longitude, altitude), unit: °, m"""
         return self._geodetic_deg
-
+    
+    def get_altitude_ground(self):
+        """altitude, unit: m"""
+        return self._altitude_ground_m
+    
     def get_position(self):
         """(north, east, down), unit: m"""
         return self._position
@@ -68,6 +73,7 @@ class BaseSimulator(ABC):
         self._geodetic_deg = np.zeros(3)
         self._position = np.zeros(3)
         self._position_neu = np.zeros(3)
+        self._altitude_ground_m = 0.0
         self._posture = np.zeros(3)
         self._velocity = np.zeros(3)
 
@@ -256,6 +262,7 @@ class AircraftSimulator(BaseSimulator):
             Catalog.position_long_gc_deg,
             Catalog.position_h_sl_m
         ])
+        self._altitude_ground_m = self.get_property_value(Catalog.position_h_agl_m)
         self._position[:] = LLA2NED(*self._geodetic_deg, self.lat0, self.lon0, self.alt0)
         self._position_neu[:] = self._position[0], self._position[1], -self._position[2]
 
