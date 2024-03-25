@@ -39,7 +39,7 @@ from scripts.train.opus_utils_p3o import (
     eval_model
 )
 
-@hydra.main(version_base="1.1", config_path=".", config_name="opus_train_p3o")
+@hydra.main(version_base="1.1", config_path=".", config_name="opus_train_ppo")
 def main(cfg: DictConfig):  # noqa: F821
     device = (
         torch.device("cuda:0")

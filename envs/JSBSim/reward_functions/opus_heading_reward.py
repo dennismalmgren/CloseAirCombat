@@ -40,7 +40,7 @@ class OpusHeadingReward(BaseRewardFunction):
             delta_heading = task.delta_heading
             delta_altitude = task.delta_altitude
             delta_speed = task.delta_speed
-            delta_heading_rad = math.atan2(delta_heading[0], delta_heading[1])
+            delta_heading_rad = math.atan2(delta_heading[1], delta_heading[0])
             delta_heading_deg = math.degrees(delta_heading_rad)
 
             heading_error_scale = 5.0  # degrees
