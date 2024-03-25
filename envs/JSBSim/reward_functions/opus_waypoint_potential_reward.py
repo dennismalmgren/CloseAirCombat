@@ -35,7 +35,6 @@ class OpusWaypointPotentialReward(BaseRewardFunction):
         # 3: search area
         # 4: engage target
         """
-       
         agent = env.agents[agent_id]
         curriculum = env.curriculum
         active_task = int(agent.get_property_value(c.current_task_id))
@@ -45,7 +44,7 @@ class OpusWaypointPotentialReward(BaseRewardFunction):
             active_task_type = int(agent.get_property_value(c.task_2_type_id))
         if active_task_type != 2:
             reward = _wp_approach = 0.0
-            return self._process(reward, agent_id, (_wp_approach))
+            return self._process(reward, agent_id, (_wp_approach,))
         else:
             active_waypoint_index = active_task - 1
             agent_alt = agent.get_property_value(c.position_h_sl_m)                  # 0. altitude  (unit: m)

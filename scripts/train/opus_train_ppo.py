@@ -61,10 +61,10 @@ def main(cfg: DictConfig):  # noqa: F821
     critic = value_module
 
    
-    loss_module = P3OLoss(
+    loss_module = ClipPPOLoss(
         actor_network=actor,
         critic_network=critic,
-        #clip_epsilon=cfg.optim.clip_epsilon,
+        clip_epsilon=cfg.optim.clip_epsilon,
         loss_critic_type=cfg.optim.loss_critic_type,
         entropy_coef=cfg.optim.entropy_coef,
         critic_coef=cfg.optim.critic_coef,
@@ -217,8 +217,14 @@ def main(cfg: DictConfig):  # noqa: F821
             for k, batch in enumerate(data_buffer):
                 # Get a data batch
                 batch = batch.to(device)
-
-                #TODO: Add annealing
+                alpha = 1.0
+                if cfg_optim_anneal_lr:
+                    alpha = 1 - (num_network_updates / total_network_updates)
+                    for group in actor_optim.param_groups:
+                        group["lr"] = cfg_optim_lr * alpha
+                    for group in critic_optim.param_groups:
+                        group["lr"] = cfg_optim_lr * alpha
+                        
                 num_network_updates += 1
                 # Forward pass PPO loss
                 loss = loss_module(batch)

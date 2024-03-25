@@ -1,6 +1,5 @@
+tensordict-nightly
 torchrl-nightly
-torch==2.1.0
-#torchrl, tensordict from source
 pymap3d==3.0.1
 geographiclib==2.0
 gymnasium==0.29.1

@@ -214,6 +214,6 @@ class P3OLoss(PPOLoss):
         td_out.set("loss_entropy", -self.entropy_coef * entropy.mean()) 
 
         if self.critic_coef:
-            loss_critic = self.loss_critic(tensordict)
+            loss_critic = self.loss_critic(tensordict)[0]
             td_out.set("loss_critic", loss_critic.mean())
         return td_out

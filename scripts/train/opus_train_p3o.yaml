@@ -48,13 +48,13 @@ optim:
   entropy_coef: 0.01
   critic_coef: 1.0
   ppo_epochs: 20
-  anneal_lr: false
+  anneal_lr: true
   anneal_clip_epsilon: false
 
 
 # collector
 collector:
-  total_frames: 100_000_000
+  total_frames: 30_000_000
   frames_per_batch: 8000 #max_episode_steps * env_per_collector
   device: cpu
   env_per_collector: 20

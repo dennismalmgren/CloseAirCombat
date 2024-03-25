@@ -3,7 +3,7 @@ from ..core.catalog import Catalog as c
 from .curiculum_base import BaseCurriculum
 import numpy as np
 
-class OpusCurriculum(BaseCurriculum):
+class OpusCurriculumHeading(BaseCurriculum):
     """
     Updates the current opus training task.
     """
@@ -45,7 +45,7 @@ class OpusCurriculum(BaseCurriculum):
             current_speed = agent.get_property_value(c.velocities_u_mps) 
             current_time = agent.get_property_value(c.simulation_sim_time_sec) #will be at least.
             #also: set task values so that they can be returned by reset.
-            agent.set_property_value(c.current_task_id, 0) #0 or 1. we always go with 0 for now..
+            agent.set_property_value(c.current_task_id, 1) #0 or 1. we always go with 0 for now..
             agent.set_property_value(c.task_1_type_id, 1) #1 for heading, 2 for waypoint.
             agent.set_property_value(c.task_2_type_id, 0) #0 for no mission.
             agent.set_property_value(c.travel_1_target_position_h_sl_m, current_altitude)
