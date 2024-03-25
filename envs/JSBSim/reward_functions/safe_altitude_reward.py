@@ -27,15 +27,15 @@ class SafeAltitudeReward(BaseRewardFunction):
         Returns:
             (float): reward
         """
-        #ego_z_neu = env.agents[agent_id].get_geodetic_deg()[2] / 1000    # unit: m
-        ego_z_neu = env.agents[agent_id].get_property_value(c.position_h_agl_ft) * 0.3048 / 1000    # unit: km
+        altitude = env.agents[agent_id].get_altitude_ground() / 1000    # unit: km
+#        ego_z_neu = env.agents[agent_id].get_property_value(c.position_h_agl_ft) * 0.3048 / 1000    # unit: km
         #ego_z_neu = -env.agents[agent_id].get_position()[-1] / 1000    # unit: km #this does not really work.
         ego_vz_neu = -env.agents[agent_id].get_velocity()[-1] / 340    # unit: mach
         Pv = 0.
-        if ego_z_neu <= self.safe_altitude:
-            Pv = -np.clip(ego_vz_neu / self.Kv * (self.safe_altitude - ego_z_neu) / self.safe_altitude, 0., 1.)
+        if altitude <= self.safe_altitude:
+            Pv = -np.clip(ego_vz_neu / self.Kv * (self.safe_altitude - altitude) / self.safe_altitude, 0., 1.)
         PH = 0.
-        if ego_z_neu <= self.danger_altitude:
-            PH = np.clip(ego_z_neu / self.danger_altitude, 0., 1.) - 1. - 1.
+        if altitude <= self.danger_altitude:
+            PH = np.clip(altitude / self.danger_altitude, 0., 1.) - 1. - 1.
         new_reward = Pv + PH
         return self._process(new_reward, agent_id, (Pv, PH))
