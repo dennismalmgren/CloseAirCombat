@@ -18,7 +18,7 @@ battle_field_origin: [56.98033, 14.07798, 0.0]
 # aircraft config
 aircraft_configs: {
   A0100: {
-    color: Red,
+    color: Blue,
     model: f16,
     init_state: {
       ic_long_gc_deg: 14.07798,

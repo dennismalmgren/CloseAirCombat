@@ -58,7 +58,8 @@ class OpusTrainingTask(BaseTask):
             c.attitude_heading_true_rad,        # 18. heading (unit: rad)
             c.velocities_vc_mps,                # 19. vc        (unit: m/s)
             c.atmosphere_crosswind_mps,         # 20. crosswind (unit: m/s)
-            c.atmosphere_headwind_mps           # 21. headwind (unit: m/s)
+            c.atmosphere_headwind_mps,           # 21. headwind (unit: m/s)
+            c.position_h_agl_m                  # 22. altitude above ground level (unit: m)
         ]
 
         # task type id
@@ -133,7 +134,7 @@ class OpusTrainingTask(BaseTask):
         ]
 
     def load_observation_space(self):
-        self.observation_space = spaces.Box(low=-10, high=10., shape=(51,))
+        self.observation_space = spaces.Box(low=-10, high=10., shape=(52,))
 
     def load_action_space(self):
         # aileron, elevator, rudder, throttle
@@ -164,6 +165,7 @@ class OpusTrainingTask(BaseTask):
         return np.asarray([w, x, y, z])
     
     def convert_state_to_ned_frame(self, state):
+        position_lla = np.asarray([state[1], state[2], state[0]])
         position_ned = LLA2NED(state[1], state[2], state[0], self.lat0, self.lon0, self.alt0)
         velocity_ned = np.asarray([state[3], state[4], state[5]])
         velocity_uvw = np.asarray([state[6], state[7], state[8]])
@@ -173,9 +175,10 @@ class OpusTrainingTask(BaseTask):
         heading = np.asarray([np.cos(state[18]), np.sin(state[18])])
         vc_u = np.asarray([state[19]])
         winds = np.asarray([state[20], state[21]])
+        h_agl = np.asarray([state[22]])
         return np.concatenate([position_ned, velocity_ned, velocity_uvw, 
                                acceleration_uvw, attitude_w_x_y_z, 
-                               attitude_rate_w_x_y_z, heading, vc_u, winds])
+                               attitude_rate_w_x_y_z, heading, vc_u, winds, h_agl])
     
     
     def normalize_angle_diff(self, angle_diff):
@@ -267,17 +270,17 @@ class OpusTrainingTask(BaseTask):
             self.delta_heading = np.array([0, 0])
             self.delta_time = np.array([0])
         else:
-            ned_target = LLA2NED(self.state_props[1], self.state_props[2], self.mission_vars[3], self.lat0, self.lon0, self.alt0)
-
+            #ned_target = LLA2NED(self.state_props[1], self.state_props[2], self.mission_vars[3], self.lat0, self.lon0, self.alt0)
+ 
             #construct the heading task observation.
-            target_altitude = np.asarray([ned_target[2]])
+            target_altitude = np.asarray([self.mission_vars[3]])
             target_heading = np.asarray([self.mission_vars[4]])
             target_speed = np.asarray([self.mission_vars[5]])
             #convert to relative values.
-            self.delta_altitude = target_altitude - self.ned_frame_state[2]
-            self.delta_heading = self.normalize_angle_diff(target_heading - self.state_props[18])
-            self.delta_heading = np.asarray([np.cos(self.delta_heading[0]), np.sin(self.delta_heading[0])])
-            self.delta_speed = target_speed - self.ned_frame_state[6]
+            self.delta_altitude = target_altitude - self.state_props[0]
+            delta_heading_rad = self.normalize_angle_diff(target_heading - self.state_props[18])
+            self.delta_heading = np.asarray([np.cos(delta_heading_rad[0]), np.sin(delta_heading_rad[0])])
+            self.delta_speed = target_speed - self.state_props[19]
             #what do we do about time?
             target_time = self.mission_vars[6]
             self.delta_time = np.asarray([target_time - current_time])
@@ -289,36 +292,6 @@ class OpusTrainingTask(BaseTask):
         0. current task id
         1. task 1 type id
         2. task 2 type id
-        3. delta altitude
-        4. north
-        5. east
-        6. down
-        7. v_north
-        8. v_east
-        9. v_down
-        10. u
-        11. v
-        12. w
-        13. udot
-        14. vdot
-        15. wdot
-        16. attitude_w
-        17. attitude_x
-        18. attitude_y
-        19. attitude_z
-        20. attitude_rate_w
-        21. attitude_rate_x
-        22. attitude_rate_y
-        23. attitude_rate_z
-        24. heading (cos)
-        25. heading (sin)
-        26. vc
-        27. crosswind
-        28. headwind
-        29. aileron cmd norm
-        30. elevator cmd norm
-        31. rudder cmd norm
-        32. throttle cmd norm
         """
         agent = env.agents[agent_id]
         self.state_props = np.array(agent.get_property_values(self.state_var))
@@ -357,7 +330,7 @@ class OpusTrainingTask(BaseTask):
         heading_mission_vars = np.concatenate([self.delta_altitude, self.delta_heading, self.delta_speed, self.delta_time])
 
         #lets build observation.
-        norm_obs = np.zeros(51)
+        norm_obs = np.zeros(52)
         norm_obs[0:3] = self.mission_declarations
 
         #heading task representation
@@ -409,10 +382,14 @@ class OpusTrainingTask(BaseTask):
         norm_obs[44] = self.ned_frame_state[22] / 340    # 25. vc (unit: mach)
         norm_obs[45] = self.ned_frame_state[23] / 5000    # 26. crosswind (unit: 5 km/s)
         norm_obs[46] = self.ned_frame_state[24] / 5000    # 27. headwind (unit: 5 km/s)
-        norm_obs[47] = self.action_props[0]              # 28. aileron cmd norm
-        norm_obs[48] = self.action_props[1]              # 29. elevator cmd norm
-        norm_obs[49] = self.action_props[2]              # 30. rudder cmd norm
-        norm_obs[50] = self.action_props[3]              # 31. throttle cmd norm
+        #norm_obs[47] = self.ned_frame_state[25] / 100    # 28. latitude (unit: 100 deg)
+        #norm_obs[48] = self.ned_frame_state[26] / 100    # 29. longitude (unit: 100 deg)
+        #norm_obs[49] = self.ned_frame_state[27] / 5000    # 30. altitude (unit: 5 km)
+        norm_obs[47] = (self.ned_frame_state[25] - 500) / 5000    # 31. altitude above safe ground level (unit: 5 km)
+        norm_obs[48] = self.action_props[0]              # 28. aileron cmd norm
+        norm_obs[49] = self.action_props[1]              # 29. elevator cmd norm
+        norm_obs[50] = self.action_props[2]              # 30. rudder cmd norm
+        norm_obs[51] = self.action_props[3]              # 31. throttle cmd norm
         norm_obs = np.clip(norm_obs, self.observation_space.low, self.observation_space.high)
         return norm_obs
 

@@ -54,8 +54,8 @@ optim:
 
 # collector
 collector:
-  total_frames: 30_000_000
-  frames_per_batch: 8000 #max_episode_steps * env_per_collector
+  total_frames: 10_000_000
+  frames_per_batch: 32000 #max_episode_steps * env_per_collector
   device: cpu
   env_per_collector: 20
 

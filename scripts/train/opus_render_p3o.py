@@ -49,7 +49,7 @@ def main(cfg: DictConfig):  # noqa: F821
     actor = policy_module
     critic = value_module
 
-    run_as_debug = True
+    run_as_debug = False
     load_from_saved_models = False
     load_from_debug = False
     #debug outputs is at the root.
@@ -72,8 +72,8 @@ def main(cfg: DictConfig):  # noqa: F821
     if load_from_saved_models:
         run_id = ""
     else:
-        run_id = "2024-03-25/19-09-26/"
-    iteration = 5808000
+        run_id = "2024-03-26/00-30-10/"
+    iteration = 10408000
     model_load_filename = f"{model_name}_{iteration}.pt"
     load_model_dir = outputs_folder + run_id
     print('Loading model from ' + load_model_dir)

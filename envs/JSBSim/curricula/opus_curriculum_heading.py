@@ -42,7 +42,7 @@ class OpusCurriculumHeading(BaseCurriculum):
             agent = env.agents[agent_id]
             current_altitude = agent.get_property_value(c.position_h_sl_m)
             current_heading_rad = agent.get_property_value(c.attitude_heading_true_rad) 
-            current_speed = agent.get_property_value(c.velocities_u_mps) 
+            current_speed = agent.get_property_value(c.velocities_vc_mps) 
             current_time = agent.get_property_value(c.simulation_sim_time_sec) #will be at least.
             #also: set task values so that they can be returned by reset.
             agent.set_property_value(c.current_task_id, 1) #0 or 1. we always go with 0 for now..
@@ -71,7 +71,7 @@ class OpusCurriculumHeading(BaseCurriculum):
         #check time is initially 0. This task works because the agent was initialized with a delta heading of 0 (target heading == current heading)
         # check heading when simulation_time exceed check_time
 
-        if -current_time >= check_time:
+        if current_time >= check_time:
             heading_turn_count = min(self.heading_turn_counts, len(self.increment_size) - 1)
             delta = self.increment_size[heading_turn_count]
             delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
