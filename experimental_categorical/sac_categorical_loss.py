@@ -687,10 +687,10 @@ class SACCategoricalLoss(LossModule):
                 ExplorationType.RANDOM
             ), self.actor_network_params.to_module(self.actor_network):
                 next_tensordict = tensordict.get("next").clone(False)
-            #     next_dist = self.actor_network.get_dist(next_tensordict)
-            #     next_action = next_dist.rsample()
-            #     next_tensordict.set(self.tensor_keys.action, next_action)
-            #     next_sample_log_prob = next_dist.log_prob(next_action)
+                next_dist = self.actor_network.get_dist(next_tensordict)
+                next_action = next_dist.rsample()
+                next_tensordict.set(self.tensor_keys.action, next_action)
+                next_sample_log_prob = next_dist.log_prob(next_action)
             #we don't really need to expand yet.
             # get q-values
             next_tensordict_expand = self._vmap_qnetworkN0(
