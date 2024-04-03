@@ -86,7 +86,7 @@ class BaseSimulator(ABC):
         roll, pitch, yaw = self.get_rpy() * 180 / np.pi
         log_msg = f"{self.uid},T={lon}|{lat}|{alt}|{roll}|{pitch}|{yaw},"
         #log_msg += f"Name={self.model.upper()},"
-        log_msg += f"Name=J39,"
+        log_msg += f"Name=JAS 39,"
         log_msg += f"Color={self.color}"
         return log_msg
 
