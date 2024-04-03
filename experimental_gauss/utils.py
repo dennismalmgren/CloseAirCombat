@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-from tensordict.nn import InteractionType, TensorDictModule
+from tensordict.nn import InteractionType, TensorDictModule, TensorDictSequential
 from tensordict.nn.distributions import NormalParamExtractor
 from torch import nn, optim
 from torchrl.collectors import SyncDataCollector
@@ -22,10 +22,11 @@ from torchrl.envs import (
 from torchrl.envs.libs.gym import GymEnv, set_gym_backend
 from torchrl.envs.transforms import InitTracker, RewardSum, StepCounter
 from torchrl.envs.utils import ExplorationType, set_exploration_type
-from torchrl.modules import MLP, ProbabilisticActor, ValueOperator
+from torchrl.modules import MLP, ProbabilisticActor, ValueOperator, DistributionalQValueActor
+
 from torchrl.modules.distributions import TanhNormal
 from torchrl.objectives import SoftUpdate
-from torchrl.objectives.sac import SACLoss
+from sac_gauss_loss import SACGaussLoss
 
 
 # ====================================================================
@@ -192,9 +193,12 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     )
 
     # Define Critic Network
+    #lets assume we have 3 outputs.
+    
+    nbins = 51
     qvalue_net_kwargs = {
         "num_cells": cfg.network.hidden_sizes,
-        "out_features": 1,
+        "out_features": nbins,
         "activation_class": get_activation(cfg),
     }
 
@@ -202,12 +206,22 @@ def make_sac_agent(cfg, train_env, eval_env, device):
         **qvalue_net_kwargs,
     )
 
-    qvalue = ValueOperator(
+    qvalue1 = TensorDictModule(
         in_keys=["action"] + in_keys,
+        out_keys=["state_action_value"],
         module=qvalue_net,
     )
 
+    qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"])
+
+    qvalue = TensorDictSequential(qvalue1, qvalue2)
+    # qvalue = ValueOperator(
+    #     in_keys=["action"] + in_keys,
+    #     module=qvalue_net,
+    # )
+
     model = nn.ModuleList([actor, qvalue]).to(device)
+    support = torch.linspace(-200, 200, nbins).to(device)
 
     # init nets
     with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM):
@@ -218,7 +232,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     del td
     eval_env.close()
 
-    return model, model[0]
+    return model, model[0], support
 
 
 # ====================================================================
@@ -226,10 +240,10 @@ def make_sac_agent(cfg, train_env, eval_env, device):
 # ---------
 
 
-def make_loss_module(cfg, model):
+def make_loss_module(cfg, model, support):
     """Make loss module and target network updater."""
     # Create SAC loss
-    loss_module = SACLoss(
+    loss_module = SACGaussLoss(
         actor_network=model[0],
         qvalue_network=model[1],
         num_qvalue_nets=1,
@@ -237,6 +251,8 @@ def make_loss_module(cfg, model):
         delay_actor=False,
         delay_qvalue=True,
         alpha_init=cfg.optim.alpha_init,
+        support = support,
+        gamma = cfg.optim.gamma
     )
     loss_module.make_value_estimator(gamma=cfg.optim.gamma)
 

@@ -210,6 +210,19 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 metrics_to_log["eval/max_return"] = torch.max(the_return)
                 metrics_to_log["eval/mean_return"] = torch.mean(the_return)
                 metrics_to_log["eval/min_return"] = torch.min(the_return)
+                eval_rollout_q = model[1](eval_rollout.to(device)).to('cpu')
+                q_pred = eval_rollout_q["state_action_value"][0, :, 0]
+                q_pred_diff = q_pred - the_return
+                q_pred_diff = abs(q_pred_diff)
+
+                metrics_to_log["eval/q_pred_diff_mean"] = q_pred_diff.mean()
+                metrics_to_log["eval/q_pred_diff_max"] = q_pred_diff.max()
+                metrics_to_log["eval/q_pred_diff_min"] = q_pred_diff.min()
+                metrics_to_log["eval/q_pred_diff_std"] = q_pred_diff.std()
+                metrics_to_log["eval/max_q_pred"] = torch.max(q_pred)
+                metrics_to_log["eval/min_q_pred"] = torch.min(q_pred)
+                metrics_to_log["eval/mean_q_pred"] = torch.mean(q_pred)
+
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
         sampling_start = time.time()

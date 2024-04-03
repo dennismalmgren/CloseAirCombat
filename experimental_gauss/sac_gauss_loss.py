@@ -37,7 +37,7 @@ def _delezify(func):
 
     return new_func
 
-class SACCategoricalLoss(LossModule):
+class SACGaussLoss(LossModule):
     """TorchRL implementation of the SAC loss.
 
     Presented in "Soft Actor-Critic: Off-Policy Maximum Entropy Deep
@@ -603,28 +603,11 @@ class SACCategoricalLoss(LossModule):
             self._cached_detached_qvalue_params,  # should we clone?
         )
         state_action_value = td_q.get(self.tensor_keys.state_action_value)
-        state_action_pmf = state_action_value.exp()
-        state_action_value = (state_action_pmf * self.support).sum(-1, keepdim=True)
-        atoms = self.support.numel()
-        Vmin = self.support.min()
-        Vmax = self.support.max()
-        delta_z = (Vmax - Vmin) / (atoms - 1)
-        b = (state_action_value - Vmin) / delta_z
-        l = b.floor().clamp(0, atoms - 1).to(torch.int64)
-        u = b.ceil().clamp(0, atoms - 1).to(torch.int64)
-        #if b is an integer, then l and u are the same.
-        l[(u > 0) & (l == u)] -= 1
-        u[(l < (atoms - 1)) & (l == u)] += 1
+        state_action_value = (state_action_value.exp() * self.support).sum(-1)
 
-        lvals = torch.gather(state_action_pmf * self.support, -1, l)
-        uvals = torch.gather(state_action_pmf * self.support, -1, u)
-        state_action_val =  lvals * (u.float() - b) + uvals * (b - l.float())
-#        state_action_val = state_action_pmf[..., l] * (u.float() - b) + state_action_pmf[u] * (b - l.float())
-        state_action_val = state_action_val
-        min_q_logprob = state_action_val.min(0)[0].squeeze(-1)
-#        min_q_logprob = (
-#            state_action_value.min(0)[0].squeeze(-1)
-#        )
+        min_q_logprob = (
+            state_action_value.min(0)[0].squeeze(-1)
+        )
 
         if log_prob.shape != min_q_logprob.shape:
             raise RuntimeError(

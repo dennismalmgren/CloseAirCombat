@@ -195,7 +195,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     # Define Critic Network
     #lets assume we have 3 outputs.
     
-    nbins = 2
+    nbins = 51
     qvalue_net_kwargs = {
         "num_cells": cfg.network.hidden_sizes,
         "out_features": nbins,

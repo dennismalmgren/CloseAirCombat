@@ -49,4 +49,4 @@ logger:
   group_name: null
   exp_name: ${env.name}_SAC_Categorical
   mode: online
-  eval_iter: 2500
+  eval_iter: 25000
