@@ -77,7 +77,7 @@ def main(cfg: DictConfig):  # noqa: F821
 
     load_model = False
     run_as_debug = False
-    load_from_saved_models = True
+    load_from_saved_models = False
     load_from_debug = False
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
@@ -104,8 +104,9 @@ def main(cfg: DictConfig):  # noqa: F821
         if load_from_saved_models:
             run_id = ""
         else:
-            run_id = "2024-02-28/00-21-18/"
-        iteration = 10208000
+            run_id = "2024-03-26/23-05-34/"
+        iteration = 9952000
+
         model_load_filename = f"{model_name}_{iteration}.pt"
         load_model_dir = outputs_folder + run_id
         print('Loading model from ' + load_model_dir)
@@ -224,7 +225,7 @@ def main(cfg: DictConfig):  # noqa: F821
                         group["lr"] = cfg_optim_lr * alpha
                     for group in critic_optim.param_groups:
                         group["lr"] = cfg_optim_lr * alpha
-                        
+
                 num_network_updates += 1
                 # Forward pass PPO loss
                 loss = loss_module(batch)
