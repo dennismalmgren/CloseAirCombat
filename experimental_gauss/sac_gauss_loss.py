@@ -716,7 +716,6 @@ class SACGaussLoss(LossModule):
             state_action_value = next_tensordict_expand.get(
                 self.tensor_keys.state_action_value
             ) #these are actually log_softmax logits. not q-values.
-            batch_size = next_tensordict_expand.batch_size[1]
             atoms = self.support.numel()
             Vmin = self.support.min()
             Vmax = self.support.max()
