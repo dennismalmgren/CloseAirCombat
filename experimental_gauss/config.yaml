@@ -47,6 +47,6 @@ logger:
   backend: wandb
   project_name: torchrl_example_sac
   group_name: null
-  exp_name: ${env.name}_SAC_Categorical
+  exp_name: ${env.name}_SAC_Gauss
   mode: online
-  eval_iter: 25000
+  eval_iter: 2500
