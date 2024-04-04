@@ -790,7 +790,7 @@ class SACCategoricalLoss(LossModule):
         #now we just need to compute the target. haha.
         pred_val = pred_val.view(-1, pred_val.shape[-1])
         target_value = target_value.view(-1, target_value.shape[-1])
-        loss_qval = torch.nn.functional.cross_entropy(pred_val, target_value, reduction="none")
+        loss_qval = torch.nn.functional.cross_entropy(pred_val, target_value, reduction="none", label_smoothing=0.01)
         loss_qval = loss_qval.view(self.num_qvalue_nets, -1)
         loss_qval = loss_qval.sum(0)
         td_error = abs(pred_val - target_value).sum(-1)
