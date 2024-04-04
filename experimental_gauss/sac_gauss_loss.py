@@ -302,30 +302,12 @@ class SACGaussLoss(LossModule):
         else:
             policy_params = None
             q_value_policy_params = None
-        # Value
-        if value_network is not None:
-            self._version = 1
-            self.delay_value = delay_value
-            self.convert_to_functional(
-                value_network,
-                "value_network",
-                create_target_params=self.delay_value,
-                compare_against=policy_params,
-            )
-        else:
-            self._version = 2
+
 
         # Q value
         self.delay_qvalue = delay_qvalue
         self.num_qvalue_nets = num_qvalue_nets
-        if self._version == 1:
-            if separate_losses:
-                value_params = list(value_network.parameters())
-                q_value_policy_params = policy_params + value_params
-            else:
-                q_value_policy_params = policy_params
-        else:
-            q_value_policy_params = policy_params
+        q_value_policy_params = policy_params
         self.convert_to_functional(
             qvalue_network,
             "qvalue_network",
@@ -370,21 +352,29 @@ class SACGaussLoss(LossModule):
         self.register_buffer(
                 "support", support.to(device)
             )
-        
+        atoms = self.support.numel()
+        Vmin = self.support.min()
+        Vmax = self.support.max()
+        delta_z = (Vmax - Vmin) / (atoms - 1)
+    
+        self.register_buffer(
+            "stddev", (0.75 * delta_z).unsqueeze(-1)
+        )
+        self.register_buffer(
+            "support_plus",
+            self.support + delta_z / 2
+        )
+        self.register_buffer(
+            "support_minus",
+            self.support - delta_z / 2
+        )
         self._target_entropy = target_entropy
         self._action_spec = action_spec
-        if self._version == 1:
-            self.__dict__["actor_critic"] = ActorCriticWrapper(
-                self.actor_network, self.value_network
-            )
-       
+
         self._vmap_qnetworkN0 = _vmap_func(
             self.qvalue_network, (None, 0), randomness=self.vmap_randomness
         )
-        if self._version == 1:
-            self._vmap_qnetwork00 = _vmap_func(
-                qvalue_network, randomness=self.vmap_randomness
-            )
+
         self.reduction = reduction
 
     @property
@@ -449,14 +439,8 @@ class SACGaussLoss(LossModule):
         if value_type is None:
             value_type = self.default_value_estimator
         self.value_type = value_type
-        if self._version == 1:
-            value_net = self.actor_critic
-        elif self._version == 2:
-            # we will take care of computing the next value inside this module
-            value_net = None
-        else:
-            # unreachable
-            raise NotImplementedError
+        # we will take care of computing the next value inside this module
+        value_net = None
 
         hp = dict(default_value_kwargs(value_type))
         hp.update(hyperparams)
@@ -509,8 +493,7 @@ class SACGaussLoss(LossModule):
             *[("next", key) for key in self.actor_network.in_keys],
             *self.qvalue_network.in_keys,
         ]
-        if self._version == 1:
-            keys.extend(self.value_network.in_keys)
+
         self._in_keys = list(set(keys))
 
     @property
@@ -527,8 +510,6 @@ class SACGaussLoss(LossModule):
     def out_keys(self):
         if self._out_keys is None:
             keys = ["loss_actor", "loss_qvalue", "loss_alpha", "alpha", "entropy"]
-            if self._version == 1:
-                keys.append("loss_value")
             self._out_keys = keys
         return self._out_keys
 
@@ -545,12 +526,9 @@ class SACGaussLoss(LossModule):
         else:
             tensordict_reshape = tensordict
 
-        if self._version == 1:
-            loss_qvalue, value_metadata = self._qvalue_v1_loss(tensordict_reshape)
-            loss_value, _ = self._value_loss(tensordict_reshape)
-        else:
-            loss_qvalue, value_metadata = self._qvalue_v2_loss(tensordict_reshape)
-            loss_value = None
+
+        loss_qvalue, value_metadata = self._qvalue_v2_loss(tensordict_reshape)
+        loss_value = None
         loss_actor, metadata_actor = self._actor_loss(tensordict_reshape)
         loss_alpha = self._alpha_loss(log_prob=metadata_actor["log_prob"])
         tensordict_reshape.set(self.tensor_keys.priority, value_metadata["td_error"])
@@ -570,8 +548,7 @@ class SACGaussLoss(LossModule):
             "alpha": self._alpha,
             "entropy": entropy.detach().mean(),
         }
-        if self._version == 1:
-            out["loss_value"] = loss_value
+
         td_out = TensorDict(out, [])
         td_out = td_out.named_apply(
             lambda name, value: _reduce(value, reduction=self.reduction)
@@ -605,26 +582,9 @@ class SACGaussLoss(LossModule):
         state_action_value = td_q.get(self.tensor_keys.state_action_value)
         state_action_pmf = state_action_value.exp()
         state_action_value = (state_action_pmf * self.support).sum(-1, keepdim=True)
-        #atoms = self.support.numel()
-        #Vmin = self.support.min()
-        #Vmax = self.support.max()
-        #delta_z = (Vmax - Vmin) / (atoms - 1)
-        #b = (state_action_value - Vmin) / delta_z
-        #l = b.floor().clamp(0, atoms - 1).to(torch.int64)
-        #u = b.ceil().clamp(0, atoms - 1).to(torch.int64)
-        #if b is an integer, then l and u are the same.
-        #l[(u > 0) & (l == u)] -= 1
-        #u[(l < (atoms - 1)) & (l == u)] += 1
-
-        #lvals = torch.gather(state_action_pmf * self.support, -1, l)
-        #uvals = torch.gather(state_action_pmf * self.support, -1, u)
-        #state_action_val =  lvals * (u.float() - b) + uvals * (b - l.float())
-#        state_action_val = state_action_pmf[..., l] * (u.float() - b) + state_action_pmf[u] * (b - l.float())
-        #state_action_val = state_action_val
+      
         min_q_logprob = state_action_value.min(0)[0].squeeze(-1)
-#        min_q_logprob = (
-#            state_action_value.min(0)[0].squeeze(-1)
-#        )
+
 
         if log_prob.shape != min_q_logprob.shape:
             raise RuntimeError(
@@ -646,43 +606,6 @@ class SACGaussLoss(LossModule):
             torch.Size([]),
             _run_checks=False,
         )
-
-    def _qvalue_v1_loss(
-        self, tensordict: TensorDictBase
-    ) -> Tuple[Tensor, Dict[str, Tensor]]:
-        target_params = self._cached_target_params_actor_value
-        with set_exploration_type(ExplorationType.MODE):
-            target_value = self.value_estimator.value_estimate(
-                tensordict, target_params=target_params
-            ).squeeze(-1)
-
-        # Q-nets must be trained independently: as such, we split the data in 2
-        # if required and train each q-net on one half of the data.
-        shape = tensordict.shape
-        if shape[0] % self.num_qvalue_nets != 0:
-            raise RuntimeError(
-                f"Batch size={tensordict.shape} is incompatible "
-                f"with num_qvqlue_nets={self.num_qvalue_nets}."
-            )
-        tensordict_chunks = tensordict.reshape(
-            self.num_qvalue_nets, -1, *tensordict.shape[1:]
-        )
-        target_chunks = target_value.reshape(
-            self.num_qvalue_nets, -1, *target_value.shape[1:]
-        )
-
-        # if vmap=True, it is assumed that the input tensordict must be cast to the param shape
-        tensordict_chunks = self._vmap_qnetwork00(
-            tensordict_chunks, self.qvalue_network_params
-        )
-        pred_val = tensordict_chunks.get(self.tensor_keys.state_action_value)
-        pred_val = pred_val.squeeze(-1)
-        loss_value = distance_loss(
-            pred_val, target_chunks, loss_function=self.loss_function
-        ).view(*shape)
-        metadata = {"td_error": (pred_val - target_chunks).pow(2).flatten(0, 1)}
-
-        return loss_value, metadata
 
     def _compute_target_gauss(self, tensordict) -> Tensor:
         r"""Value network for SAC v2.
@@ -716,24 +639,22 @@ class SACGaussLoss(LossModule):
             state_action_value = next_tensordict_expand.get(
                 self.tensor_keys.state_action_value
             ) #these are actually log_softmax logits. not q-values.
-            atoms = self.support.numel()
-            Vmin = self.support.min()
-            Vmax = self.support.max()
-            delta_z = (Vmax - Vmin) / (atoms - 1)
-            reward = next_tensordict_expand.get(self.tensor_keys.reward)
-            terminated = next_tensordict_expand.get(self.tensor_keys.terminated)
+            
+            reward = tensordict.get(("next", self.tensor_keys.reward))
+            terminated = tensordict.get(("next", self.tensor_keys.terminated))
             discount = self.gamma
             next_sample_log_prob = next_sample_log_prob.unsqueeze(-1)
-            state_action_pmf = state_action_value.exp()
-            state_action_value = (state_action_pmf * self.support).sum(-1, keepdim=True)
-            state_action_value = state_action_value - self._alpha * next_sample_log_prob
-            mean = reward + (1 - terminated.to(reward.dtype)) * discount * state_action_value
-            mean_expanded = mean[0, :, 0].unsqueeze(-1).expand_as(state_action_pmf)
-            stddev = (0.75 * delta_z)
-            stddev_expanded = stddev.unsqueeze(-1).expand_as(state_action_pmf)
-            dist = torch.distributions.Normal(mean_expanded, stddev_expanded)
-            cdf_plus = dist.cdf(self.support + delta_z / 2)
-            cdf_minus = dist.cdf(self.support - delta_z / 2)
+            state_action_value_pmf = state_action_value.exp()
+            state_action_value_pmf = (state_action_value_pmf * self.support).sum(-1, keepdim=True)
+            next_state_value = state_action_value_pmf - self._alpha * next_sample_log_prob
+            next_state_value = next_state_value.min(0)[0]
+            next_state_action_value_target_mean = reward + (1 - terminated.to(reward.dtype)) * discount * next_state_value
+            next_state_action_value_target_mean = next_state_action_value_target_mean.expand_as(state_action_value[0])
+
+            stddev_expanded = self.stddev.expand_as(next_state_action_value_target_mean)
+            dist = torch.distributions.Normal(next_state_action_value_target_mean, stddev_expanded)
+            cdf_plus = dist.cdf(self.support_plus)
+            cdf_minus = dist.cdf(self.support_minus)
             m = cdf_plus - cdf_minus
 
             return m
@@ -754,8 +675,9 @@ class SACGaussLoss(LossModule):
         )
         #pred_val is now in a form that allows us to compute cross entropy loss.
         #now we just need to compute the target. haha.
+        target_value = target_value.expand_as(pred_val)
         pred_val = pred_val.view(-1, pred_val.shape[-1])
-        target_value = target_value.view(-1, target_value.shape[-1])
+        target_value = target_value.reshape(-1, target_value.shape[-1])
         loss_qval = torch.nn.functional.cross_entropy(pred_val, target_value, reduction="none")
         loss_qval = loss_qval.view(self.num_qvalue_nets, -1)
         loss_qval = loss_qval.sum(0)
