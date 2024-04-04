@@ -221,9 +221,9 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     # )
 
     model = nn.ModuleList([actor, qvalue]).to(device)
-    support = torch.linspace(-40, 40, nbins).to(device)
+    support = torch.linspace(-1100, 1100, nbins).to(device)
 
-    # init nets
+    # init nets 
     with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM):
         td = eval_env.reset()
         td = td.to(device)
