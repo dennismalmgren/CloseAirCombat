@@ -217,7 +217,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     qvalue = TensorDictSequential(qvalue1, qvalue2)
 
     model = nn.ModuleList([actor, qvalue]).to(device)
-    support = torch.linspace(-1100, 1100, nbins).to(device)
+    support = torch.linspace(-1500, 1500, nbins).to(device)
 
     # init nets
     with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM):
