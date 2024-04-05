@@ -656,7 +656,7 @@ class SACGaussLoss(LossModule):
             cdf_plus = dist.cdf(self.support_plus)
             cdf_minus = dist.cdf(self.support_minus)
             m = cdf_plus - cdf_minus
-
+            m = m / m.sum(dim=-1, keepdim=True) 
             return m
         
     def _qvalue_v2_loss(
