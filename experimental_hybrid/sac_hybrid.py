@@ -61,10 +61,10 @@ def main(cfg: "DictConfig"):  # noqa: F821
     train_env, eval_env = make_environment(cfg)
 
     # Create agent
-    model, exploration_policy = make_sac_agent(cfg, train_env, eval_env, device)
+    model, exploration_policy, support = make_sac_agent(cfg, train_env, eval_env, device)
 
     # Create SAC loss
-    loss_module, target_net_updater = make_loss_module(cfg, model)
+    loss_module, target_net_updater = make_loss_module(cfg, model, support)
 
     # Create off-policy collector
     collector = make_collector(cfg, train_env, exploration_policy)
@@ -123,13 +123,13 @@ def main(cfg: "DictConfig"):  # noqa: F821
             for i in range(num_updates):
                 # Sample from replay buffer
                 sampled_tensordict = replay_buffer.sample()
+                sampled_tensordict = sampled_tensordict
                 if sampled_tensordict.device != device:
                     sampled_tensordict = sampled_tensordict.to(
                         device, non_blocking=True
                     )
                 else:
                     sampled_tensordict = sampled_tensordict.clone()
-
                 # Compute loss
                 loss_td = loss_module(sampled_tensordict)
 
@@ -202,6 +202,27 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 eval_reward = eval_rollout["next", "reward"].sum(-2).mean().item()
                 metrics_to_log["eval/reward"] = eval_reward
                 metrics_to_log["eval/time"] = eval_time
+                the_reward = eval_rollout["next", "reward"][0, :, 0]
+                the_return = torch.zeros_like(the_reward)
+                the_return[-1] = the_reward[-1]
+                for i in range(len(the_return) - 1, 1, -1):
+                    the_return[i - 1] = the_reward[i - 1] + cfg.optim.gamma * the_return[i]
+                eval_rollout_log_pm_q = model[1](eval_rollout.to(device)).to('cpu')
+                q_pred = torch.sum(eval_rollout_log_pm_q["state_action_value"][0].exp() * support.to('cpu'), dim=-1)
+
+                q_pred_diff = q_pred - the_return
+                q_pred_diff = abs(q_pred_diff)
+                metrics_to_log["eval/max_return"] = torch.max(the_return)
+                metrics_to_log["eval/mean_return"] = torch.mean(the_return)
+                metrics_to_log["eval/min_return"] = torch.min(the_return)
+                metrics_to_log["eval/q_pred_diff_mean"] = q_pred_diff.mean()
+                metrics_to_log["eval/q_pred_diff_max"] = q_pred_diff.max()
+                metrics_to_log["eval/q_pred_diff_min"] = q_pred_diff.min()
+                metrics_to_log["eval/q_pred_diff_std"] = q_pred_diff.std()
+                metrics_to_log["eval/max_q_pred"] = torch.max(q_pred)
+                metrics_to_log["eval/min_q_pred"] = torch.min(q_pred)
+                metrics_to_log["eval/mean_q_pred"] = torch.mean(q_pred)
+                
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
         sampling_start = time.time()

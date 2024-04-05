@@ -716,24 +716,17 @@ class SACCategoricalLoss(LossModule):
             state_action_value = next_tensordict_expand.get(
                 self.tensor_keys.state_action_value
             ) #these are actually log_softmax logits. not q-values.
-            batch_size = next_tensordict_expand.batch_size[1]
+
             atoms = self.support.numel()
             Vmin = self.support.min()
             Vmax = self.support.max()
             delta_z = (Vmax - Vmin) / (atoms - 1)
-            reward = next_tensordict_expand.get(self.tensor_keys.reward)
-            terminated = next_tensordict_expand.get(self.tensor_keys.terminated)
+            reward = tensordict.get(("next", self.tensor_keys.reward))
+            terminated = tensordict.get(("next", self.tensor_keys.terminated))
             discount = self.gamma
             next_sample_log_prob = next_sample_log_prob.unsqueeze(-1)
 
             Tz = reward + (1 - terminated.to(reward.dtype)) * discount * (self.support - self._alpha * next_sample_log_prob) #here we need to subtract log prob.
-
-            if Tz.shape != torch.Size([*next_tensordict_expand.batch_size, atoms]):
-                raise RuntimeError(
-                    "Tz shape must end with torch.Size([batch_size, atoms]), "
-                    f"got Tz.shape={Tz.shape} and batch_size={batch_size}, "
-                    f"atoms={atoms}"
-                )
 
             Tz = Tz.clamp(Vmin, Vmax)
 
@@ -745,32 +738,36 @@ class SACCategoricalLoss(LossModule):
             l[(u > 0) & (l == u)] -= 1
             u[(l < (atoms - 1)) & (l == u)] += 1
             # Distribute probability of Tz
-            m = torch.zeros_like(Tz)
+            m = torch.zeros_like(state_action_value)
 
+            batch_size = Tz.shape[0]
             offset = torch.linspace(
                 0,
-                ((batch_size - 1) * atoms),
-                batch_size,
+                (self.num_qvalue_nets * batch_size - 1) * atoms,
+                self.num_qvalue_nets * batch_size,
                 dtype=torch.int64,
                 device=l.device,
             )
-            offset = offset.unsqueeze(1).expand(batch_size, atoms)
-
+            offset = offset.unsqueeze(-1)
             next_action_pmf = state_action_value.exp()
-            index = (l + offset).view(-1)
+            index = l.expand_as(state_action_value).reshape(-1, atoms) + offset
+            index = index.view(-1)
+#            index = (l + offset).view(-1)
             #doesn't work with multiple, but works now.
             tensor = (next_action_pmf * (u.float() - b)).view(-1)
             m.view(-1).index_add_(0, index, tensor)
-            index = (u + offset).view(-1)
+            index = u.expand_as(state_action_value).reshape(-1, atoms) + offset
+            index = index.view(-1)
+            #index = (u + offset).view(-1)
             tensor = (next_action_pmf * (b - l.float())).view(-1)
             m.view(-1).index_add_(0, index, tensor)
+            m_vals = torch.sum(m * self.support, -1)
+            _, min_indices = m_vals.min(dim=0)
+            min_indices = min_indices.view(1, batch_size, 1).expand(-1, -1, atoms)
+            target_distributions = torch.gather(m, 0, min_indices)
+            target_distributions = target_distributions.squeeze(0)
 
-            #next_state_value = state_action_value - self._alpha * next_sample_log_prob
-            #next_state_value = next_state_value.min(0)[0]
-            #tensordict.set(
-            #    ("next", self.value_estimator.tensor_keys.value), next_state_value
-            #)
-            return m
+            return target_distributions
         
     def _qvalue_v2_loss(
         self, tensordict: TensorDictBase
@@ -786,10 +783,11 @@ class SACCategoricalLoss(LossModule):
         pred_val = tensordict_expand.get(self.tensor_keys.state_action_value).squeeze(
             -1
         )
-        #pred_val is now in a form that allows us to compute cross entropy loss.
-        #now we just need to compute the target. haha.
+
+        target_value = target_value.expand_as(pred_val)
         pred_val = pred_val.view(-1, pred_val.shape[-1])
-        target_value = target_value.view(-1, target_value.shape[-1])
+        target_value = target_value.reshape(-1, target_value.shape[-1])
+
         loss_qval = torch.nn.functional.cross_entropy(pred_val, target_value, reduction="none", label_smoothing=0.01)
         loss_qval = loss_qval.view(self.num_qvalue_nets, -1)
         loss_qval = loss_qval.sum(0)

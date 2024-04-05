@@ -215,10 +215,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"])
 
     qvalue = TensorDictSequential(qvalue1, qvalue2)
-    # qvalue = ValueOperator(
-    #     in_keys=["action"] + in_keys,
-    #     module=qvalue_net,
-    # )
+
 
     model = nn.ModuleList([actor, qvalue]).to(device)
     support = torch.linspace(-1100, 1100, nbins).to(device)
@@ -246,7 +243,7 @@ def make_loss_module(cfg, model, support):
     loss_module = SACCategoricalLoss(
         actor_network=model[0],
         qvalue_network=model[1],
-        num_qvalue_nets=1,
+        num_qvalue_nets=2,
         loss_function=cfg.optim.loss_function,
         delay_actor=False,
         delay_qvalue=True,

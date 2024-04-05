@@ -26,7 +26,7 @@ from torchrl.modules import MLP, ProbabilisticActor, ValueOperator, Distribution
 
 from torchrl.modules.distributions import TanhNormal
 from torchrl.objectives import SoftUpdate
-from sac_gauss_loss import SACGaussLoss
+from sac_hybrid_loss import SACHybridLoss
 
 
 # ====================================================================
@@ -145,17 +145,6 @@ def make_replay_buffer(
 # -----
 
 
-class ProjectionModule(nn.Module):
-    def __init__(self, vmin, vmax, nbins):
-        super().__init__()
-        self.vmin = vmin
-        self.vmax = vmax
-        self.nbins = nbins
-        self.register_buffer("bins", vmin + torch.linspace(vmin, vmax, nbins) * (vmax - vmin) / (nbins - 1))
-
-    def forward(self, x):
-        return torch.mean(x * self.bins, dim=-1, keepdim=True)
-    
 def make_sac_agent(cfg, train_env, eval_env, device):
     """Make SAC agent."""
     # Define Actor Network
@@ -205,6 +194,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
 
     # Define Critic Network
     #lets assume we have 3 outputs.
+    
     nbins = 51
     qvalue_net_kwargs = {
         "num_cells": cfg.network.hidden_sizes,
@@ -215,24 +205,22 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     qvalue_net = MLP(
         **qvalue_net_kwargs,
     )
-    qvalue_norm_net = nn.Softmax(dim = -1)
-    qvalue_proj_net = ProjectionModule(-5, 500, nbins)
-    qvalue_proj_seq_net = nn.Sequential(qvalue_norm_net, qvalue_proj_net)
-    qvalue_prep_mod = TensorDictModule(
-        in_keys = ["action"] + in_keys,
-        out_keys = ["action_embd"],
-        module=qvalue_net
-    )
 
-    qvalue_proj_mod = ValueOperator(
-        in_keys=["action_embd"],
+    qvalue1 = TensorDictModule(
+        in_keys=["action"] + in_keys,
         out_keys=["state_action_value"],
-        module=qvalue_proj_seq_net,
+        module=qvalue_net,
     )
-    qvalue = TensorDictSequential(qvalue_prep_mod, qvalue_proj_mod)
-    model = nn.ModuleList([actor, qvalue]).to(device)
 
-    # init nets
+    qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"])
+
+    qvalue = TensorDictSequential(qvalue1, qvalue2)
+
+
+    model = nn.ModuleList([actor, qvalue]).to(device)
+    support = torch.linspace(-1100, 1100, nbins).to(device)
+
+    # init nets 
     with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM):
         td = eval_env.reset()
         td = td.to(device)
@@ -241,7 +229,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     del td
     eval_env.close()
 
-    return model, model[0]
+    return model, model[0], support
 
 
 # ====================================================================
@@ -249,17 +237,19 @@ def make_sac_agent(cfg, train_env, eval_env, device):
 # ---------
 
 
-def make_loss_module(cfg, model):
+def make_loss_module(cfg, model, support):
     """Make loss module and target network updater."""
     # Create SAC loss
-    loss_module = SACGaussLoss(
+    loss_module = SACHybridLoss(
         actor_network=model[0],
         qvalue_network=model[1],
-        num_qvalue_nets=2,
+        num_qvalue_nets=1,
         loss_function=cfg.optim.loss_function,
         delay_actor=False,
         delay_qvalue=True,
         alpha_init=cfg.optim.alpha_init,
+        support = support,
+        gamma = cfg.optim.gamma
     )
     loss_module.make_value_estimator(gamma=cfg.optim.gamma)
 

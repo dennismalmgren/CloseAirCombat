@@ -37,7 +37,7 @@ def _delezify(func):
 
     return new_func
 
-class SACGaussLoss(LossModule):
+class SACHybridLoss(LossModule):
     """TorchRL implementation of the SAC loss.
 
     Presented in "Soft Actor-Critic: Off-Policy Maximum Entropy Deep
@@ -279,6 +279,7 @@ class SACGaussLoss(LossModule):
         priority_key: str = None,
         separate_losses: bool = False,
         reduction: str = None,
+        support: torch.Tensor = None,
     ) -> None:
         self._in_keys = None
         self._out_keys = None
@@ -286,7 +287,7 @@ class SACGaussLoss(LossModule):
             reduction = "mean"
         super().__init__()
         self._set_deprecated_ctor_keys(priority_key=priority_key)
-
+        self.register_buffer("gamma", torch.tensor(gamma))
         # Actor
         self.delay_actor = delay_actor
         self.convert_to_functional(
@@ -367,14 +368,34 @@ class SACGaussLoss(LossModule):
                 torch.nn.Parameter(torch.tensor(math.log(alpha_init), device=device)),
             )
 
+        self.register_buffer(
+                "support", support.to(device)
+            )
+        
+        atoms = self.support.numel()
+        Vmin = self.support.min()
+        Vmax = self.support.max()
+        delta_z = (Vmax - Vmin) / (atoms - 1)
+    
+        self.register_buffer(
+            "stddev", (0.75 * delta_z).unsqueeze(-1)
+        )
+        self.register_buffer(
+            "support_plus",
+            self.support + delta_z / 2
+        )
+        self.register_buffer(
+            "support_minus",
+            self.support - delta_z / 2
+        )
+
         self._target_entropy = target_entropy
         self._action_spec = action_spec
         if self._version == 1:
             self.__dict__["actor_critic"] = ActorCriticWrapper(
                 self.actor_network, self.value_network
             )
-        if gamma is not None:
-            raise TypeError(_GAMMA_LMBDA_DEPREC_ERROR)
+       
         self._vmap_qnetworkN0 = _vmap_func(
             self.qvalue_network, (None, 0), randomness=self.vmap_randomness
         )
@@ -600,18 +621,28 @@ class SACGaussLoss(LossModule):
             self._cached_detached_qvalue_params,  # should we clone?
         )
         state_action_value = td_q.get(self.tensor_keys.state_action_value)
-        #TODO: integrate into torchrl
-        #nbins = 51
-        #minval = -1000
-        #maxval = 10000
-        #support = torch.arange(nbins).to(state_action_value.device)
-        #support = minval + support * (maxval - minval) / (nbins - 1)
-        #state_action_value = torch.softmax(state_action_value, dim=-1)
-        #state_action_value = state_action_value * support
-        #state_action_value = torch.mean(state_action_value, dim=-1)
-        min_q_logprob = (
-            state_action_value.min(0)[0].squeeze(-1)
-        )
+        state_action_pmf = state_action_value.exp()
+        state_action_value = (state_action_pmf * self.support).sum(-1, keepdim=True)
+        #atoms = self.support.numel()
+        #Vmin = self.support.min()
+        #Vmax = self.support.max()
+        #delta_z = (Vmax - Vmin) / (atoms - 1)
+        #b = (state_action_value - Vmin) / delta_z
+        #l = b.floor().clamp(0, atoms - 1).to(torch.int64)
+        #u = b.ceil().clamp(0, atoms - 1).to(torch.int64)
+        #if b is an integer, then l and u are the same.
+        #l[(u > 0) & (l == u)] -= 1
+        #u[(l < (atoms - 1)) & (l == u)] += 1
+
+        #lvals = torch.gather(state_action_pmf * self.support, -1, l)
+        #uvals = torch.gather(state_action_pmf * self.support, -1, u)
+        #state_action_val =  lvals * (u.float() - b) + uvals * (b - l.float())
+#        state_action_val = state_action_pmf[..., l] * (u.float() - b) + state_action_pmf[u] * (b - l.float())
+        #state_action_val = state_action_val
+        min_q_logprob = state_action_value.min(0)[0].squeeze(-1)
+#        min_q_logprob = (
+#            state_action_value.min(0)[0].squeeze(-1)
+#        )
 
         if log_prob.shape != min_q_logprob.shape:
             raise RuntimeError(
@@ -671,15 +702,16 @@ class SACGaussLoss(LossModule):
 
         return loss_value, metadata
 
-    def _compute_target_v2(self, tensordict) -> Tensor:
+    def _compute_target_categorical(self, tensordict) -> Tensor:
         r"""Value network for SAC v2.
 
-        SAC v2 is based on a value estimate of the form:
+        Distributional SAC v2 is based on a value estimate of the form:
 
         .. math::
 
           V = Q(s,a) - \alpha * \log p(a | s)
 
+        in a distributional (categorical) form. 
         This class computes this value given the actor and qvalue network
 
         """
@@ -694,64 +726,125 @@ class SACGaussLoss(LossModule):
                 next_action = next_dist.rsample()
                 next_tensordict.set(self.tensor_keys.action, next_action)
                 next_sample_log_prob = next_dist.log_prob(next_action)
-
+            #we don't really need to expand yet.
             # get q-values
             next_tensordict_expand = self._vmap_qnetworkN0(
                 next_tensordict, self.target_qvalue_network_params
             )
             state_action_value = next_tensordict_expand.get(
                 self.tensor_keys.state_action_value
-            )
-            #TODO: integrate into torchrl
-            #nbins = 51
-            #minval = -1000
-            #maxval = 10000
-            #support = torch.arange(nbins).to(state_action_value.device)
-            #support = minval + support * (maxval - minval) / (nbins - 1)
-            #state_action_value = torch.softmax(state_action_value, dim=-1)
-            #state_action_value = state_action_value * support
-            #state_action_value = torch.mean(state_action_value, dim=-1, keepdim=True)
-            if (
-                state_action_value.shape[-len(next_sample_log_prob.shape) :]
-                != next_sample_log_prob.shape
-            ):
-                next_sample_log_prob = next_sample_log_prob.unsqueeze(-1)
-            next_state_value = state_action_value - self._alpha * next_sample_log_prob
-            next_state_value = next_state_value.min(0)[0]
-            tensordict.set(
-                ("next", self.value_estimator.tensor_keys.value), next_state_value
-            )
-            target_value = self.value_estimator.value_estimate(tensordict).squeeze(-1)
-            return target_value
+            ) #these are actually log_softmax logits. not q-values.
 
+            atoms = self.support.numel()
+            Vmin = self.support.min()
+            Vmax = self.support.max()
+            delta_z = (Vmax - Vmin) / (atoms - 1)
+            reward = tensordict.get(("next", self.tensor_keys.reward))
+            terminated = tensordict.get(("next", self.tensor_keys.terminated))
+            discount = self.gamma
+            next_sample_log_prob = next_sample_log_prob.unsqueeze(-1)
+
+            Tz = reward + (1 - terminated.to(reward.dtype)) * discount * (self.support - self._alpha * next_sample_log_prob) #here we need to subtract log prob.
+
+            Tz = Tz.clamp(Vmin, Vmax)
+
+            b = (Tz - Vmin) / delta_z
+
+            support_expanded = self.support.unsqueeze(0).unsqueeze(0)
+            support_plus_expanded = self.support_plus.unsqueeze(0).unsqueeze(0)
+            support_minus_expanded = self.support_minus.unsqueeze(0).unsqueeze(0)
+            b_expanded = b.unsqueeze(-1)
+            dist = torch.distributions.Normal(b_expanded, self.stddev)
+
+            cdf_plus = dist.cdf(support_plus_expanded)
+            cdf_minus = dist.cdf(support_minus_expanded)
+            m_add = cdf_plus - cdf_minus
+
+            #Here, for each element in b, we want to map it according to H-Gauss
+            #b is Batch x numels
+            next_action_pmf = state_action_value.exp()
+            next_action_pmf_expanded = next_action_pmf.unsqueeze(-1)
+            m = m_add * next_action_pmf_expanded
+            m = m.sum(dim=-1)
+            # m = torch.zeros_like(state_action_value)
+            # for ind in range(atoms):
+            #     mean_ind = b[:, ind]
+            #     weighted_mean_ind = mean_ind 
+            #     #now we redistribute this value
+            #     stddev_expanded = self.stddev.expand_as(weighted_mean_ind)
+            #     dist = torch.distributions.Normal(weighted_mean_ind, stddev_expanded)
+            #     cdf_plus = dist.cdf(self.support_plus.unsqueeze(-1)).transpose(0, 1)  
+            #     cdf_minus = dist.cdf(self.support_minus.unsqueeze(-1)).transpose(0, 1)                
+            #     m_add = cdf_plus - cdf_minus
+            #     #m_add = m_add.sum(-1)
+            #     m[0].add_(m_add * next_action_pmf[0, :, ind].unsqueeze(-1)) #we could post-modulate this? is this even at all different from the previous implementation
+            #need to normalize?
+#             l = b.floor().clamp(0, atoms - 1).to(torch.int64)
+#             u = b.ceil().clamp(0, atoms - 1).to(torch.int64)
+#             #what do these two lines do?
+#             #if b is an integer, then l and u are the same.
+#             l[(u > 0) & (l == u)] -= 1
+#             u[(l < (atoms - 1)) & (l == u)] += 1
+#             # Distribute probability of Tz
+#             m = torch.zeros_like(state_action_value)
+#             batch_size = Tz.shape[0]
+#             offset = torch.linspace(
+#                 0,
+#                 (self.num_qvalue_nets * batch_size - 1) * atoms,
+#                 self.num_qvalue_nets * batch_size,
+#                 dtype=torch.int64,
+#                 device=l.device,
+#             )
+#             offset = offset.unsqueeze(-1)
+#             next_action_pmf = state_action_value.exp()
+#             index = l.expand_as(state_action_value).reshape(-1, atoms) + offset
+#             index = index.view(-1)
+# #            index = (l + offset).view(-1)
+#             #doesn't work with multiple, but works now.
+#             tensor = (next_action_pmf * (u.float() - b)).view(-1)
+#             m.view(-1).index_add_(0, index, tensor)
+#             index = u.expand_as(state_action_value).reshape(-1, atoms) + offset
+#             index = index.view(-1)
+#             #index = (u + offset).view(-1)
+#             tensor = (next_action_pmf * (b - l.float())).view(-1)
+#             m.view(-1).index_add_(0, index, tensor)
+#             m_vals = torch.sum(m * self.support, -1)
+#             _, min_indices = m_vals.min(dim=0)
+#             min_indices = min_indices.view(1, batch_size, 1).expand(-1, -1, atoms)
+#             target_distributions = torch.gather(m, 0, min_indices)
+#             target_distributions = target_distributions.squeeze(0)
+
+            return m
+        
     def _qvalue_v2_loss(
         self, tensordict: TensorDictBase
     ) -> Tuple[Tensor, Dict[str, Tensor]]:
         # we pass the alpha value to the tensordict. Since it's a scalar, we must erase the batch-size first.
-        target_value = self._compute_target_v2(tensordict)
+        target_value = self._compute_target_categorical(tensordict)
 
         tensordict_expand = self._vmap_qnetworkN0(
             tensordict.select(*self.qvalue_network.in_keys, strict=False),
             self.qvalue_network_params,
         )
+
         pred_val = tensordict_expand.get(self.tensor_keys.state_action_value).squeeze(
             -1
         )
-        #TODO: Integrate into torchrl
-        #nbins = 51
-        #minval = -1000
-        #maxval = 10000
-        #support = torch.arange(nbins).to(pred_val.device)
-        #support = minval + support * (maxval - minval) / (nbins - 1)
-        #pred_val = torch.softmax(pred_val, dim=-1)
-        #pred_val = pred_val * support
-        #pred_val = torch.mean(pred_val, dim=-1)
-        td_error = abs(pred_val - target_value)
-        loss_qval = distance_loss(
-            pred_val,
-            target_value.expand_as(pred_val),
-            loss_function=self.loss_function,
-        ).sum(0)
+
+        target_value = target_value.expand_as(pred_val)
+        pred_val = pred_val.view(-1, pred_val.shape[-1])
+        target_value = target_value.reshape(-1, target_value.shape[-1])
+
+        loss_qval = torch.nn.functional.cross_entropy(pred_val, target_value, reduction="none", label_smoothing=0.01)
+        loss_qval = loss_qval.view(self.num_qvalue_nets, -1)
+        loss_qval = loss_qval.sum(0)
+        td_error = abs(pred_val - target_value).sum(-1)
+        td_error = td_error.view(self.num_qvalue_nets, -1)
+        #loss_qval = distance_loss(
+        #    pred_val,
+        #    target_value.expand_as(pred_val),
+        #    loss_function=self.loss_function,
+        #).sum(0)
         metadata = {"td_error": td_error.detach().max(0)[0]}
         return loss_qval, metadata
 
