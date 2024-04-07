@@ -1,8 +1,8 @@
 # environment and task
 env:
-  name: Humanoid-v5
-  task: ""
-  library: gymnasium
+  name: reacher
+  task: easy
+  library: dm_control
   max_episode_steps: 1000
   seed: 42
 
