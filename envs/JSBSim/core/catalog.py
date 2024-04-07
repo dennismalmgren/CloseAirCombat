@@ -581,8 +581,8 @@ class ExtraCatalog(Property, Enum):
         JsbsimCatalog.attitude_psi_rad.max,
     )
 
-    travel_1_target_velocities_u_mps = Property(
-        "missions/travel-1-target-velocity-u-mps",
+    travel_1_target_velocities_vc_mps = Property(
+        "missions/travel-1-target-velocity-vc-mps",
         "target speed [mps]",
         -700,
         700

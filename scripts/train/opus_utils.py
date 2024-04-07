@@ -45,7 +45,7 @@ from tensordict.nn import AddStateIndependentNormalScale
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
-from envs.JSBSim.torchrl.air_combat_env_wrapper import JSBSimWrapper
+from envs.JSBSim.torchrl.jsbsim_wrapper import JSBSimWrapper
 from envs.JSBSim.envs import OpusTrainingEnv
 
 # ====================================================================

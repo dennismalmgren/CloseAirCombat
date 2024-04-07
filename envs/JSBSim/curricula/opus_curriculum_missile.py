@@ -125,7 +125,6 @@ class OpusCurriculumMissile(BaseCurriculum):
         Returns:Q
             (tuple): (done, success, info)
         """
-        f
         agent = env.agents[agent_id]
 
 

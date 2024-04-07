@@ -43,7 +43,7 @@ from torchrl.modules import (
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
-from envs.JSBSim.torchrl.air_combat_env_wrapper import JSBSimWrapper
+from envs.JSBSim.torchrl.jsbsim_wrapper import JSBSimWrapper
 from envs.JSBSim.envs import OpusTrainingEnv
 
 # ====================================================================
@@ -62,9 +62,9 @@ def apply_env_transforms(env):# max_episode_steps=1000):
         env,
         Compose(
             InitTracker(),
-            StepCounter(),
+            StepCounter(max_steps=1000),
             DoubleToFloat(),
-            RewardScaling(loc=0.0, scale=0.1),
+            #RewardScaling(loc=0.0, scale=0.1),
             RewardSum(),
             CatFrames(5, dim=-1, in_keys=['observation'])
         ),

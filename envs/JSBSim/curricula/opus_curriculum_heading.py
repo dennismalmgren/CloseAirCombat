@@ -50,7 +50,7 @@ class OpusCurriculumHeading(BaseCurriculum):
             agent.set_property_value(c.task_2_type_id, 0) #0 for no mission.
             agent.set_property_value(c.travel_1_target_position_h_sl_m, current_altitude)
             agent.set_property_value(c.travel_1_target_attitude_psi_rad, current_heading_rad)
-            agent.set_property_value(c.travel_1_target_velocities_u_mps, current_speed)
+            agent.set_property_value(c.travel_1_target_velocities_vc_mps, current_speed)
             agent.set_property_value(c.travel_1_target_time_s, (self.check_interval + current_time))
             
     def step(self, env, agent_id, info= {}):
@@ -90,8 +90,8 @@ class OpusCurriculumHeading(BaseCurriculum):
             new_heading = new_heading * np.pi / 180
             agent.set_property_value(c.travel_1_target_attitude_psi_rad, new_heading)
 
-            new_velocities_u = agent.get_property_value(c.travel_1_target_velocities_u_mps) + delta_velocities_u
-            agent.set_property_value(c.travel_1_target_velocities_u_mps, new_velocities_u)
+            new_velocities_u = agent.get_property_value(c.travel_1_target_velocities_vc_mps) + delta_velocities_u
+            agent.set_property_value(c.travel_1_target_velocities_vc_mps, new_velocities_u)
             
             new_time = delta_time + current_time
             agent.set_property_value(c.travel_1_target_time_s, new_time)

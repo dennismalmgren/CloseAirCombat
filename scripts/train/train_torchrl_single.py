@@ -41,7 +41,7 @@ import setproctitle
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from config import get_config
 from envs.JSBSim.envs import SingleControlEnv
-from envs.JSBSim.torchrl.air_combat_env_wrapper import JSBSimWrapper
+from envs.JSBSim.torchrl.jsbsim_wrapper import JSBSimWrapper
 from envs.JSBSim.torchrl.tensor_specs import ConvertibleMultiOneHotDiscreteTensorSpec
 from envs.JSBSim.torchrl.objectives import MultiDiscreteSACLoss
 

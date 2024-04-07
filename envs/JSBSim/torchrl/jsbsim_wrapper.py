@@ -33,7 +33,6 @@ from envs.JSBSim.envs.env_base import BaseEnv
 from envs.JSBSim.envs.singlecontrol_env_cont import SingleControlEnv
 from envs.JSBSim.envs.singlecontrol_env_cont_missile import SingleControlMissileEnv
 from envs.JSBSim.envs.singlecombat_env import SingleCombatEnv
-from envs.JSBSim.envs.multiplecombat_env import MultipleCombatEnv
 from envs.JSBSim.envs import OpusTrainingEnv
 from envs.JSBSim.torchrl.tensor_specs import ConvertibleMultiOneHotDiscreteTensorSpec
 

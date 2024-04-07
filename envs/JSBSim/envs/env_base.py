@@ -24,7 +24,6 @@ class BaseEnv(gym.Env):
                  dict_spaces = False,):
         # basic args
         self.config = parse_config(config_name)
-        self.max_steps = getattr(self.config, 'max_steps', 100)  # type: int
         self.sim_freq = getattr(self.config, 'sim_freq', 60)  # type: int
         self.agent_interaction_steps = getattr(self.config, 'agent_interaction_steps', 12)  # type: int
         self.center_lat, self.center_lon, self.center_alt = \
@@ -164,9 +163,9 @@ class BaseEnv(gym.Env):
         truncations = {}
         for agent_id in self.agents.keys():
             termination, info = self.task.get_termination(self, agent_id, info)
-            truncation, info = self.task.get_truncation(self, agent_id, info)
+            #truncation, info = self.task.get_truncation(self, agent_id, info)
             terminations[agent_id] = [termination]
-            truncations[agent_id] = [truncation]
+            truncations[agent_id] = [False]
 
         rewards = {}
         for agent_id in self.agents.keys():

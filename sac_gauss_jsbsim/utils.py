@@ -217,8 +217,8 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     qvalue = TensorDictSequential(qvalue1, qvalue2)
 
     model = nn.ModuleList([actor, qvalue]).to(device)
-    Vmin = 0
-    Vmax = 100
+    Vmin = -200
+    Vmax = 400
     N_bins = nbins - 6
     delta = (Vmax - Vmin) / (N_bins - 1)
     Vmin_final = Vmin - 3 * delta
