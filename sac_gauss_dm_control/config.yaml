@@ -1,8 +1,8 @@
 # environment and task
 env:
-  name: Humanoid-v5
-  task: ""
-  library: gymnasium
+  name: reacher
+  task: easy
+  library: dm_control
   max_episode_steps: 1000
   seed: 42
 
@@ -47,6 +47,6 @@ logger:
   backend: wandb
   project_name: sac_classification
   group_name: null
-  exp_name: ${env.name}_SAC_Gauss_swish
+  exp_name: ${env.name}_SAC_Gauss
   mode: online
   eval_iter: 2500
