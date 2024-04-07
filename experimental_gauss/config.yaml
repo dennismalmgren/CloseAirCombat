@@ -1,6 +1,6 @@
 # environment and task
 env:
-  name: HalfCheetah-v5
+  name: Hopper-v5
   task: ""
   library: gymnasium
   max_episode_steps: 1000
@@ -47,6 +47,6 @@ logger:
   backend: wandb
   project_name: torchrl_example_sac
   group_name: null
-  exp_name: ${env.name}_SAC_Gauss
+  exp_name: ${env.name}_SAC_Gauss_swish
   mode: online
   eval_iter: 2500
