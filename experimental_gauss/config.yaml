@@ -47,6 +47,6 @@ logger:
   backend: wandb
   project_name: sac_classification
   group_name: null
-  exp_name: ${env.name}_SAC_Gauss_swish
+  exp_name: ${env.name}_SAC_Gauss
   mode: online
   eval_iter: 2500

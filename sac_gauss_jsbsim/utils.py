@@ -18,6 +18,7 @@ from torchrl.envs import (
     EnvCreator,
     ParallelEnv,
     TransformedEnv,
+    CatFrames
 )
 from torchrl.envs.libs.gym import GymEnv, set_gym_backend
 from torchrl.envs.transforms import InitTracker, RewardSum, StepCounter
@@ -26,8 +27,10 @@ from torchrl.modules import MLP, ProbabilisticActor, ValueOperator, Distribution
 
 from torchrl.modules.distributions import TanhNormal
 from torchrl.objectives import SoftUpdate
-from sac_gauss_loss import SACGaussLoss
+from sac_gauss_jsbsim.sac_gauss_loss import SACGaussLoss
 
+from envs.JSBSim.torchrl.jsbsim_wrapper import JSBSimWrapper
+from envs.JSBSim.envs import OpusTrainingEnv
 
 # ====================================================================
 # Environment utils
@@ -48,19 +51,40 @@ def env_maker(cfg, device="cpu"):
             env, CatTensors(in_keys=env.observation_spec.keys(), out_key="observation")
         )
     else:
-        raise NotImplementedError(f"Unknown lib {lib}.")
+        env = OpusTrainingEnv(cfg.env.name)
+        wrapped_env = JSBSimWrapper(env, categorical_action_encoding=False)
+        return wrapped_env 
+        
 
-
-def apply_env_transforms(env, max_episode_steps=1000):
-    transformed_env = TransformedEnv(
-        env,
-        Compose(
-            InitTracker(),
-            StepCounter(max_episode_steps),
-            DoubleToFloat(),
-            RewardSum(),
-        ),
-    )
+def apply_env_transforms(env, cfg, max_episode_steps=1000):
+    lib = cfg.env.library
+    if lib in ("gym", "gymnasium") or lib == "dm_control":
+        transformed_env = TransformedEnv(
+            env,
+            Compose(
+                InitTracker(),
+                StepCounter(max_episode_steps),
+                DoubleToFloat(),
+                RewardSum(),
+            ),
+        )
+    else:
+        transformed_env = TransformedEnv(
+            env,
+            Compose(
+                InitTracker(),
+                StepCounter(max_episode_steps),
+                DoubleToFloat(),
+                RewardSum(in_keys=["reward", "OpusHeadingReward", "OpusHeadingReward_alt",
+                                   "OpusHeadingReward_heading", "OpusHeadingReward_roll", "OpusHeadingReward_speed",
+                                   "SafeAltitudeReward", "SafeAltitudeReward_PH", "SafeAltitudeReward_Pv"],
+                        reset_keys=["reward", "OpusHeadingReward", "OpusHeadingReward_alt",
+                                   "OpusHeadingReward_heading", "OpusHeadingReward_roll", "OpusHeadingReward_speed",
+                                   "SafeAltitudeReward", "SafeAltitudeReward_PH", "SafeAltitudeReward_Pv"]
+                                   ),
+                CatFrames(5, dim=-1, in_keys=["observation"])
+            ),
+        )
     return transformed_env
 
 
@@ -73,7 +97,7 @@ def make_environment(cfg):
     )
     parallel_env.set_seed(cfg.env.seed)
 
-    train_env = apply_env_transforms(parallel_env, cfg.env.max_episode_steps)
+    train_env = apply_env_transforms(parallel_env, cfg, cfg.env.max_episode_steps)
 
     eval_env = TransformedEnv(
         ParallelEnv(
@@ -217,8 +241,8 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     qvalue = TensorDictSequential(qvalue1, qvalue2)
 
     model = nn.ModuleList([actor, qvalue]).to(device)
-    Vmin = -200
-    Vmax = 400
+    Vmin = -500
+    Vmax = 500
     N_bins = nbins - 6
     delta = (Vmax - Vmin) / (N_bins - 1)
     Vmin_final = Vmin - 3 * delta

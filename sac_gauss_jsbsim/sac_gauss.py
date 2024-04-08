@@ -23,7 +23,7 @@ from torchrl._utils import logger as torchrl_logger
 from torchrl.envs.utils import ExplorationType, set_exploration_type
 
 from torchrl.record.loggers import generate_exp_name, get_logger
-from utils import (
+from sac_gauss_jsbsim.utils import (
     log_metrics,
     make_collector,
     make_environment,
@@ -98,6 +98,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     )
     prb = cfg.replay_buffer.prb
     eval_iter = cfg.logger.eval_iter
+    save_iter = cfg.logger.save_iter
     frames_per_batch = cfg.collector.frames_per_batch
     eval_rollout_steps = cfg.env.max_episode_steps
 
@@ -170,13 +171,26 @@ def main(cfg: "DictConfig"):  # noqa: F821
             if tensordict["next", "done"].any()
             else tensordict["next", "truncated"]
         )
-        episode_rewards = tensordict["next", "episode_reward"][episode_end]
+        next_tensordict = tensordict["next"]
+
+        log_rewards = dict()
+        log_rewards["episode_reward"] = next_tensordict["episode_reward"][episode_end]
+        log_rewards["episode_OpusHeadingReward"] = next_tensordict["episode_OpusHeadingReward"][episode_end]
+        log_rewards["episode_OpusHeadingReward_alt"] = next_tensordict["episode_OpusHeadingReward_alt"][episode_end]
+        log_rewards["episode_OpusHeadingReward_heading"] = next_tensordict["episode_OpusHeadingReward_heading"][episode_end]
+        log_rewards["episode_OpusHeadingReward_roll"] = next_tensordict["episode_OpusHeadingReward_roll"][episode_end]
+        log_rewards["episode_OpusHeadingReward_speed"] = next_tensordict["episode_OpusHeadingReward_speed"][episode_end]
+        log_rewards["episode_SafeAltitudeReward"] = next_tensordict["episode_SafeAltitudeReward"][episode_end]
+        log_rewards["episode_SafeAltitudeReward_PH"] = next_tensordict["episode_SafeAltitudeReward_PH"][episode_end]
+        log_rewards["episode_SafeAltitudeReward_Pv"] = next_tensordict["episode_SafeAltitudeReward_Pv"][episode_end]
 
         # Logging
         metrics_to_log = {}
-        if len(episode_rewards) > 0:
+        if len( log_rewards["episode_reward"]) > 0:
             episode_length = tensordict["next", "step_count"][episode_end]
-            metrics_to_log["train/reward"] = episode_rewards.mean().item()
+            for key, val in log_rewards.items():
+                metrics_to_log["train/" + key] = val.mean().item()
+#            metrics_to_log["train/reward"] = episode_rewards.mean().item()
             metrics_to_log["train/episode_length"] = episode_length.sum().item() / len(
                 episode_length
             )
@@ -200,22 +214,36 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     break_when_any_done=True,
                 )
                 eval_time = time.time() - eval_start
-                eval_reward = eval_rollout["next", "reward"].sum(-2).mean().item()
-                metrics_to_log["eval/reward"] = eval_reward
-                metrics_to_log["eval/time"] = eval_time
-                the_reward = eval_rollout["next", "reward"][0, :, 0]
-                the_return = torch.zeros_like(the_reward)
-                the_return[-1] = the_reward[-1]
-                for i in range(len(the_return) - 1, 1, -1):
-                    the_return[i - 1] = the_reward[i - 1] + cfg.optim.gamma * the_return[i]
+                next_tensordict = eval_rollout["next"]
+                log_rewards = dict()
+                log_rewards["reward"] = next_tensordict["reward"][0, :, 0]
+                log_rewards["OpusHeadingReward"] = next_tensordict["OpusHeadingReward"][0, :, 0]
+                log_rewards["OpusHeadingReward_alt"] = next_tensordict["OpusHeadingReward_alt"][0, :, 0]
+                log_rewards["OpusHeadingReward_heading"] = next_tensordict["OpusHeadingReward_heading"][0, :, 0]
+                log_rewards["OpusHeadingReward_roll"] = next_tensordict["OpusHeadingReward_roll"][0, :, 0]
+                log_rewards["OpusHeadingReward_speed"] = next_tensordict["OpusHeadingReward_speed"][0, :, 0]
+                log_rewards["SafeAltitudeReward"] = next_tensordict["SafeAltitudeReward"][0, :, 0]
+                log_rewards["SafeAltitudeReward_PH"] = next_tensordict["SafeAltitudeReward_PH"][0, :, 0]
+                log_rewards["SafeAltitudeReward_Pv"] = next_tensordict["SafeAltitudeReward_Pv"][0, :, 0]
+                for key, val in log_rewards.items():
+                    metrics_to_log["eval/" + key] = val.mean().item()
+                    the_reward = val
+                    the_return = torch.zeros_like(the_reward)
+                    the_return[-1] = the_reward[-1]
+                    for i in range(len(the_return) - 1, 1, -1):
+                        the_return[i - 1] = the_reward[i - 1] + cfg.optim.gamma * the_return[i]
+                    if key == "reward":
+                        pred_return = the_return
+                    metrics_to_log["eval/max_return_" + key] = torch.max(the_return)
+                    metrics_to_log["eval/mean_return_" + key] = torch.mean(the_return)
+                    metrics_to_log["eval/min_return_" + key] = torch.min(the_return)
+                    
                 eval_rollout_log_pm_q = model[1](eval_rollout.to(device)).to('cpu')
                 q_pred = torch.sum(eval_rollout_log_pm_q["state_action_value"][0].exp() * support.to('cpu'), dim=-1)
 
-                q_pred_diff = q_pred - the_return
+                q_pred_diff = q_pred - pred_return
                 q_pred_diff = abs(q_pred_diff)
-                metrics_to_log["eval/max_return"] = torch.max(the_return)
-                metrics_to_log["eval/mean_return"] = torch.mean(the_return)
-                metrics_to_log["eval/min_return"] = torch.min(the_return)
+
                 metrics_to_log["eval/q_pred_diff_mean"] = q_pred_diff.mean()
                 metrics_to_log["eval/q_pred_diff_max"] = q_pred_diff.max()
                 metrics_to_log["eval/q_pred_diff_min"] = q_pred_diff.min()
@@ -223,14 +251,35 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 metrics_to_log["eval/max_q_pred"] = torch.max(q_pred)
                 metrics_to_log["eval/min_q_pred"] = torch.min(q_pred)
                 metrics_to_log["eval/mean_q_pred"] = torch.mean(q_pred)
-                
+                metrics_to_log["eval/time"] = eval_time
+                metrics_to_log["eval/episode_length"] = len(eval_rollout)
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
+        if abs(collected_frames % save_iter) < frames_per_batch:
+            savestate = {
+                    'model': model.state_dict(),
+                    'loss_module': loss_module.state_dict(),
+                    'optimizer_actor': optimizer_actor.state_dict(),
+                    'optimizer_critic': optimizer_critic.state_dict(),
+                    'optimizer_alpha': optimizer_alpha.state_dict(),
+                    "collected_frames": {"collected_frames": collected_frames}
+            }
+            torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
         sampling_start = time.time()
 
     collector.shutdown()
+    savestate = {
+            'model': model.state_dict(),
+            'loss_module': loss_module.state_dict(),
+            'optimizer_actor': optimizer_actor.state_dict(),
+            'optimizer_critic': optimizer_critic.state_dict(),
+            'optimizer_alpha': optimizer_alpha.state_dict(),
+            "collected_frames": {"collected_frames": collected_frames}
+    }
+    torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
     end_time = time.time()
     execution_time = end_time - start_time
+    
     torchrl_logger.info(f"Training took {execution_time:.2f} seconds to finish")
 
 
