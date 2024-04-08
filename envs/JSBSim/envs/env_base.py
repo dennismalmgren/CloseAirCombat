@@ -170,7 +170,11 @@ class BaseEnv(gym.Env):
         rewards = {}
         for agent_id in self.agents.keys():
             reward, info = self.task.get_reward(self, agent_id, info)
-            
+            if agent_id not in info:
+                info[agent_id] = {}
+            for reward_function in self.task.reward_functions:
+                for ind, reward_item_name in enumerate(reward_function.reward_item_names):
+                    info[agent_id][reward_item_name] = reward_function.reward_trajectory[agent_id][-1][ind]
             rewards[agent_id] = [reward]
         if self.dict_spaces:
             return obs, rewards, terminations, truncations, info

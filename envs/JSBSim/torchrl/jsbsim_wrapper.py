@@ -108,7 +108,7 @@ class JSBSimWrapper(_EnvWrapper):
         self, env: BaseEnv
     ) -> None:
         if is_single_agent_env(env):
-            self.action_spec = CompositeSpec(
+            self.full_action_spec = CompositeSpec(
                     {
                         "action": self._jsbsim_to_torchrl_spec_transform(
                                         self.action_space, 
@@ -117,7 +117,7 @@ class JSBSimWrapper(_EnvWrapper):
                                 )
                     }
                 )
-            self.observation_spec = CompositeSpec(
+            self.full_observation_spec = CompositeSpec(
                     {
                         "observation": self._jsbsim_to_torchrl_spec_transform(
                                         self.observation_space, 
@@ -126,7 +126,7 @@ class JSBSimWrapper(_EnvWrapper):
                                 )
                     }
                 )
-            self.reward_spec = CompositeSpec(
+            self.full_reward_spec = CompositeSpec(
                     {
                         "reward": UnboundedContinuousTensorSpec(
                             shape=torch.Size((1,)), 
@@ -135,7 +135,16 @@ class JSBSimWrapper(_EnvWrapper):
                         )
                     }
                 )
-            
+            for reward_function in self._env.task.reward_functions:
+                for key in reward_function.reward_item_names:
+                    self.full_reward_spec.update({
+                        key: UnboundedContinuousTensorSpec(
+                                shape=torch.Size((1,)), 
+                                device=self.device,
+                                dtype=torch.float32
+                            )
+                    
+                    })
             self.done_spec = CompositeSpec(
                 {
                     "done": DiscreteTensorSpec(
@@ -420,8 +429,15 @@ class JSBSimWrapper(_EnvWrapper):
                 self.done_spec["truncated"].encode(truncated, ignore_device=True), \
                 self.done_spec["done"].encode(done, ignore_device=True)
                 
-                
-    def read_reward(self, reward: np.ndarray) -> np.ndarray:
+    def read_reward_items(self, info: dict) -> dict:
+        #TODO: ASSUMES SINGLE AGENT ENV
+        reward_dict = dict()
+        for key in info[self._env.agent_ids[0]].keys():
+            reward_dict[key] = np.array([info[self._env.agent_ids[0]][key]])
+
+        return reward_dict
+              
+    def read_reward(self, reward: dict) -> np.ndarray:
         return self.reward_spec.encode(reward, ignore_device=True)
     
     def _step(
@@ -435,9 +451,10 @@ class JSBSimWrapper(_EnvWrapper):
             obs, reward, terminated, truncated, done, info = self._output_transform(self._env.step(action_np))
             source = self.read_obs(obs) #is now a dict.
             terminated, truncated, done = self.read_done(terminated, truncated, done)
-            reward = self.read_reward(reward)
-
-            source.update({self.reward_key: reward})
+            log_reward_dict = self.read_reward_items(info)
+            log_reward_dict["reward"] = reward
+            reward = self.read_reward(log_reward_dict)
+            source.update(reward)
             source.update({"done": done})
             source.update({"terminated": terminated})
             source.update({"truncated": truncated})

@@ -1,15 +1,15 @@
 # environment and task
 env:
-  name: HalfCheetah-v5
-  task: ""
-  library: gymnasium
+  name: reacher
+  task: easy
+  library: dm_control
   max_episode_steps: 1000
   seed: 42
 
 # collector
 collector:
   total_frames: 1_000_000
-  init_random_frames: 2500
+  init_random_frames: 25000
   frames_per_batch: 1000
   init_env_steps: 1000
   device: cpu
@@ -45,8 +45,8 @@ network:
 # logging
 logger:
   backend: wandb
-  project_name: torchrl_example_sac
+  project_name: sac_classification
   group_name: null
   exp_name: ${env.name}_SAC
-  mode: disabled
+  mode: online
   eval_iter: 2500
