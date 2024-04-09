@@ -189,7 +189,6 @@ class P3OLoss(PPOLoss):
             advantage = (advantage - loc) / scale
         log_weight, dist = self._log_weight(tensordict_copy)
 
-        advantage = F.relu(advantage)
         log_weight_minus_1 = log_weight.exp() - 1
         tau = 4.0
         neg_loss = torch.sigmoid(tau * log_weight_minus_1) * 4 / tau * advantage

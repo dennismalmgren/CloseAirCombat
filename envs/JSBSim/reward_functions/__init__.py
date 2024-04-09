@@ -11,3 +11,4 @@ from .opus_waypoint_reward import OpusWaypointReward
 from .opus_waypoint_potential_reward import OpusWaypointPotentialReward
 from .opus_altitude_reward import OpusAltitudeReward
 from .opus_altitude_speed_heading_reward import OpusAltitudeSpeedHeadingReward
+from .opus_altitude_speed_reward import OpusAltitudeSpeedReward

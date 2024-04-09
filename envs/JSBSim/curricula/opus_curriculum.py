@@ -2,7 +2,7 @@ import math
 from ..core.catalog import Catalog as c
 from .curriculum_base import BaseCurriculum
 import numpy as np
-from ..tasks import OpusAltitudeTask, OpusAltitudeSpeedHeadingTask
+from ..tasks import OpusAltitudeTask, OpusAltitudeSpeedHeadingTask, OpusAltitudeSpeedTask
 
 class OpusCurriculum(BaseCurriculum):
     """
