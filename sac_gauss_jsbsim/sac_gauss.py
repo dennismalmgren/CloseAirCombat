@@ -66,9 +66,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     # Create SAC loss
     loss_module, target_net_updater = make_loss_module(cfg, model, support)
 
-    # Create off-policy collector
-    collector = make_collector(cfg, train_env, exploration_policy)
-
+    
     # Create replay buffer
     replay_buffer = make_replay_buffer(
         batch_size=cfg.optim.batch_size,
@@ -84,12 +82,65 @@ def main(cfg: "DictConfig"):  # noqa: F821
         optimizer_critic,
         optimizer_alpha,
     ) = make_sac_optimizer(cfg, loss_module)
+    
+    #Load model (optional)
+    load_model = False
+    run_as_debug = False
+    load_from_saved_models = False
+    load_from_debug = False
+    #debug outputs is at the root.
+    #commandline outputs is at scripts/patrol/outputs
+    if load_model:
+        #debug outputs is at the root.
+        #commandline outputs is at scripts/patrol/outputs
+        if run_as_debug:
+            if load_from_debug:
+                outputs_folder = "../../"
+            elif load_from_saved_models:
+                outputs_folder = "../../../sac_gauss_jsbsim/saved_models/"
+            else:
+                outputs_folder = "../../../sac_gauss_jsbsim/outputs/"
+        else:
+            if load_from_debug:
+                outputs_folder = "../../../../../outputs/"
+            elif load_from_saved_models:
+                outputs_folder = "../../../saved_models/"
+            else:
+                outputs_folder = "../../"
+        model_name = "training_snapshot"
+        if load_from_saved_models:
+            model_name = "training_snapshot_heading"
+        if load_from_saved_models:
+            run_id = ""
+        else:
+            run_id = "2024-04-08/04-03-03/"
+        iteration = 1000000
+        model_load_filename = f"{model_name}_{iteration}.pt"
+        load_model_dir = outputs_folder + run_id
+        print('Loading model from ' + load_model_dir)
+        loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
+        model_state = loaded_state['model']
+        loss_module_state = loaded_state['loss_module']
+        optimizer_actor_state = loaded_state['optimizer_actor']
+        optimizer_critic_state = loaded_state['optimizer_critic']
+        optimizer_alpha_state = loaded_state['optimizer_alpha']
+        collected_frames = loaded_state['collected_frames']['collected_frames']
+        model.load_state_dict(model_state)
+        loss_module.load_state_dict(loss_module_state)
+        optimizer_actor.load_state_dict(optimizer_actor_state)
+        optimizer_critic.load_state_dict(optimizer_critic_state)
+        optimizer_alpha.load_state_dict(optimizer_alpha_state)
+    else:          
+        collected_frames = 0
+    frames_remaining = cfg.collector.total_frames - collected_frames
+    #we need to store the replay buffer...
+    # Create off-policy collector
+    collector = make_collector(cfg, train_env, exploration_policy, frames_remaining)
 
     # Main loop
     start_time = time.time()
-    collected_frames = 0
     pbar = tqdm.tqdm(total=cfg.collector.total_frames)
-
+    pbar.update(collected_frames)
     init_random_frames = cfg.collector.init_random_frames
     num_updates = int(
         cfg.collector.env_per_collector
