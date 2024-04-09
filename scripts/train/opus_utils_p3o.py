@@ -261,7 +261,7 @@ def make_ppo_modules(cfg, proof_environment):
 
     return policy_module, value_module
 
-def make_ppo_models(cfg, eval_env, device):
+def make_agent(cfg, eval_env, device):
     policy_module, value_module = make_ppo_modules(
         cfg, eval_env
     )

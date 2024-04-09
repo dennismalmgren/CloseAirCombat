@@ -35,7 +35,7 @@ from objectives import P3OLoss
 
 from scripts.train.opus_utils_p3o import (
     make_environment,
-    make_ppo_models,
+    make_agent,
     eval_model
 )
 
@@ -56,7 +56,7 @@ def main(cfg: DictConfig):  # noqa: F821
     train_env, eval_env = make_environment(cfg)
     reward_keys = list(train_env.reward_spec.keys())
     # Create agent
-    policy_module, value_module = make_ppo_models(cfg, eval_env, device)
+    policy_module, value_module = make_agent(cfg, eval_env, device)
     actor = policy_module
     critic = value_module
 

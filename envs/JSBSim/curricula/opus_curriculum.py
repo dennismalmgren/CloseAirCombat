@@ -1,6 +1,6 @@
 import math
 from ..core.catalog import Catalog as c
-from .curiculum_base import BaseCurriculum
+from .curriculum_base import BaseCurriculum
 import numpy as np
 from ..tasks import OpusAltitudeTask, OpusAltitudeSpeedHeadingTask
 

@@ -17,7 +17,6 @@ class OpusAltitudeSpeedHeadingReward(BaseRewardFunction):
 
       
         """
-
         task_variables = task.calculate_task_variables(env, agent_id)
         delta_altitude_m = task_variables[0]
         delta_roll_rad = task_variables[1]
