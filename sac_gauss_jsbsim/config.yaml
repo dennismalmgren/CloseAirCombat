@@ -48,6 +48,6 @@ logger:
   project_name: opus_heading
   group_name: null
   exp_name: ${env.name}_SAC_Gauss
-  mode: online
+  mode: disabled
   eval_iter: 10_000
   save_iter: 100_000

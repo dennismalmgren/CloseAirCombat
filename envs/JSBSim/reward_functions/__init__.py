@@ -9,3 +9,5 @@ from .safe_altitude_reward import SafeAltitudeReward
 from .opus_heading_reward import OpusHeadingReward
 from .opus_waypoint_reward import OpusWaypointReward
 from .opus_waypoint_potential_reward import OpusWaypointPotentialReward
+from .opus_altitude_reward import OpusAltitudeReward
+from .opus_altitude_speed_heading_reward import OpusAltitudeSpeedHeadingReward

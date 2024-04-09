@@ -135,16 +135,15 @@ class JSBSimWrapper(_EnvWrapper):
                         )
                     }
                 )
-            for reward_function in self._env.task.reward_functions:
-                for key in reward_function.reward_item_names:
-                    self.full_reward_spec.update({
-                        key: UnboundedContinuousTensorSpec(
-                                shape=torch.Size((1,)), 
-                                device=self.device,
-                                dtype=torch.float32
-                            )
-                    
-                    })
+            for reward_key in self._env.task.get_reward_keys():                
+                self.full_reward_spec.update({
+                    reward_key: UnboundedContinuousTensorSpec(
+                            shape=torch.Size((1,)), 
+                            device=self.device,
+                            dtype=torch.float32
+                        )
+                
+                })
             self.done_spec = CompositeSpec(
                 {
                     "done": DiscreteTensorSpec(

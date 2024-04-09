@@ -1,6 +1,6 @@
 import numpy as np
 from .reward_function_base import BaseRewardFunction
-from ..core.catalog import Catalog as c
+from envs.JSBSim.core.catalog import Catalog as c
 
 class SafeAltitudeReward(BaseRewardFunction):
     """
@@ -28,8 +28,6 @@ class SafeAltitudeReward(BaseRewardFunction):
             (float): reward
         """
         altitude = env.agents[agent_id].get_altitude_ground() / 1000    # unit: km
-#        ego_z_neu = env.agents[agent_id].get_property_value(c.position_h_agl_ft) * 0.3048 / 1000    # unit: km
-        #ego_z_neu = -env.agents[agent_id].get_position()[-1] / 1000    # unit: km #this does not really work.
         ego_vz_neu = -env.agents[agent_id].get_velocity()[-1] / 340    # unit: mach
         Pv = 0.
         if altitude <= self.safe_altitude:

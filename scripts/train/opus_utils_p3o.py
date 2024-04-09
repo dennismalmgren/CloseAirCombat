@@ -58,14 +58,15 @@ def env_maker(cfg):
 
 
 def apply_env_transforms(env):# max_episode_steps=1000):
+    reward_keys = list(env.reward_spec.keys())
     transformed_env = TransformedEnv(
         env,
         Compose(
             InitTracker(),
             StepCounter(max_steps=1000),
             DoubleToFloat(),
-            #RewardScaling(loc=0.0, scale=0.1),
-            RewardSum(),
+            RewardSum(in_keys=reward_keys,
+                      reset_keys=reward_keys),
             CatFrames(5, dim=-1, in_keys=['observation'])
         ),
     )
@@ -89,14 +90,13 @@ def make_environment(cfg, return_eval=True):
         EnvCreator(lambda cfg=cfg: env_maker(cfg)),
     )
     parallel_env.set_seed(cfg.env.seed)
-
     train_env = apply_env_transforms(parallel_env)#, cfg.collector.max_frames_per_traj)
     if not return_eval:
         return train_env
 
     eval_env = TransformedEnv(
         ParallelEnv(
-            cfg.collector.env_per_collector,
+            1,
             EnvCreator(lambda cfg=cfg: env_maker(cfg)),
         ),
         train_env.transform.clone(),
@@ -276,8 +276,9 @@ def make_ppo_models(cfg, eval_env, device):
 
     return policy_module, value_module
 
-def eval_model(actor, test_env, num_episodes=3):
-    test_rewards = []
+def eval_model(actor, test_env, reward_keys, num_episodes=3):
+    test_rewards = dict()
+    test_returns = dict()
     test_lengths = []
     for _ in range(num_episodes):
         td_test = test_env.rollout(
@@ -287,14 +288,17 @@ def eval_model(actor, test_env, num_episodes=3):
             break_when_any_done=True,
             max_steps=10_000_000,
         )
-
-        reward = td_test["next", "episode_reward"][td_test["next", "done"]]
+        
+        for key in reward_keys:
+            episode_reward = td_test["next", "episode_" + key][td_test["next", "done"]]
+            test_rewards["episode_" + key] = test_rewards.get(key, []) + [episode_reward.cpu().item()]
+          
         episode_length = td_test["next", "step_count"][td_test["next", "done"]]
 
-        test_rewards.append(reward.cpu())
+    #    test_rewards.append(reward.cpu())
         test_lengths.append(episode_length.type(torch.float32).cpu())
     del td_test
-    return torch.cat(test_rewards, 0).mean(), torch.cat(test_lengths, 0).mean()
+    return test_rewards, torch.cat(test_lengths, 0).mean()
 
 def make_sac_agent(cfg, train_env, eval_env, device):
     """Make SAC agent."""
