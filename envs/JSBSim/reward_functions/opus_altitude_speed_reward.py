@@ -30,7 +30,6 @@ class OpusAltitudeSpeedReward(BaseRewardFunction):
         
         speed_error_scale = 24  # mps (~10%)
         speed_r = math.exp(-((delta_speed / speed_error_scale) ** 2))
-        alt_r = roll_r = 1
 
-        reward = (speed_r * alt_r * roll_r) ** (1 / 2)
+        reward = (speed_r * alt_r * roll_r) ** (1 / 3)
         return self._process(reward, agent_id, (alt_r, roll_r, speed_r))
