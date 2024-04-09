@@ -5,7 +5,7 @@ from typing import Dict, Any, Tuple, List
 from ..core.simulator import AircraftSimulator, BaseSimulator
 from ..tasks.task_base import BaseTask
 from ..utils.utils import parse_config
-
+from ..curricula import OpusCurriculum
 
 class BaseEnv(gym.Env):
     """
@@ -58,13 +58,13 @@ class BaseEnv(gym.Env):
         return self.agent_interaction_steps / self.sim_freq
 
     def load(self):
-        self.load_task()
+#        self.load_task()
         self.load_curriculum()
         self.load_simulator()
         self.seed()
 
-    def load_task(self):
-        self.task = BaseTask(self.config)
+    # def load_task(self):
+    #     self.task = BaseTask(self.config)
   
     def load_curriculum(self):
         self.curriculum = None
@@ -146,7 +146,7 @@ class BaseEnv(gym.Env):
         action = self._unpack(action)
         for agent_id in self.agents.keys():
             a_action = self.task.normalize_action(self, agent_id, action[agent_id])
-            self.agents[agent_id].set_property_values(self.task.action_var, a_action)
+            self.agents[agent_id].set_property_values(self.task.action_props, a_action)
         # run simulation
         for _ in range(self.agent_interaction_steps):
             for sim in self._jsbsims.values():

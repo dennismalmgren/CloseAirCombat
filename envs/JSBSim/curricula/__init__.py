@@ -1,2 +1,1 @@
-from .opus_curriculum_heading import OpusCurriculumHeading
-from .opus_curriculum_wp import OpusCurriculumWaypoints
+from .opus_curriculum import OpusCurriculum

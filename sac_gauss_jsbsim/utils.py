@@ -69,18 +69,18 @@ def apply_env_transforms(env, cfg, max_episode_steps=1000):
             ),
         )
     else:
+        reward_keys = ["reward"]
+        for reward_function in env.task[0].reward_functions:
+                for key in reward_function.reward_item_names:
+                    reward_keys.append(key)
         transformed_env = TransformedEnv(
             env,
             Compose(
                 InitTracker(),
                 StepCounter(max_episode_steps),
                 DoubleToFloat(),
-                RewardSum(in_keys=["reward", "OpusHeadingReward", "OpusHeadingReward_alt",
-                                   "OpusHeadingReward_heading", "OpusHeadingReward_roll", "OpusHeadingReward_speed",
-                                   "SafeAltitudeReward", "SafeAltitudeReward_PH", "SafeAltitudeReward_Pv"],
-                        reset_keys=["reward", "OpusHeadingReward", "OpusHeadingReward_alt",
-                                   "OpusHeadingReward_heading", "OpusHeadingReward_roll", "OpusHeadingReward_speed",
-                                   "SafeAltitudeReward", "SafeAltitudeReward_PH", "SafeAltitudeReward_Pv"]
+                RewardSum(in_keys=reward_keys,
+                        reset_keys=reward_keys
                                    ),
                 CatFrames(5, dim=-1, in_keys=["observation"])
             ),
@@ -96,7 +96,7 @@ def make_environment(cfg):
         serial_for_single=True,
     )
     parallel_env.set_seed(cfg.env.seed)
-
+    reward_keys = parallel_env.task[0].get_reward_keys()
     train_env = apply_env_transforms(parallel_env, cfg, cfg.env.max_episode_steps)
 
     eval_env = TransformedEnv(
@@ -107,7 +107,7 @@ def make_environment(cfg):
         ),
         train_env.transform.clone(),
     )
-    return train_env, eval_env
+    return train_env, eval_env, reward_keys
 
 
 # ====================================================================

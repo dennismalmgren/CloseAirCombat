@@ -60,7 +60,6 @@ class BaseTask(ABC):
         for reward_function in self.reward_functions:
             reward_function.reset(self, env)
             
-
     def step(self, env):
         """ Task-specific step
 
@@ -69,6 +68,14 @@ class BaseTask(ABC):
         """
         pass
 
+    def get_reward_keys(self):
+        """Get reward keys
+
+        Returns:
+            (list): reward keys
+        """
+        return ["reward"] + [reward_item_name for reward_function in self.reward_functions for reward_item_name in reward_function.reward_item_names]
+    
     def get_reward(self, env, agent_id, info={}) -> Tuple[float, dict]:
         """
         Aggregate reward functions
@@ -88,25 +95,6 @@ class BaseTask(ABC):
             func_reward = reward_function.get_reward(self, env, agent_id)
             reward += func_reward
         return reward, info
-    
-    # def get_truncation(self, env, agent_id, info={}) -> Tuple[bool, dict]:
-    #     """
-    #     Aggregate truncation conditions
-
-    #     Args:
-    #         env: environment instance
-    #         agent_id: current agent id
-    #         info: additional info
-
-    #     Returns:
-    #         (tuple):
-    #             truncated(bool): whether the episode has truncated
-    #             info(dict): additional info
-    #     """
-    #     truncated = False
-    #     t, s, info = self.truncation_condition.get_termination(self, env, agent_id, info)
-    #     truncated = truncated or t
-    #     return truncated, info
     
     def get_termination(self, env, agent_id, info={}) -> Tuple[bool, dict]:
         """
@@ -141,3 +129,26 @@ class BaseTask(ABC):
         """Normalize action to be consistent with action space.
         """
         return np.array(action)
+
+    def _convert_to_quaternion(self, roll, pitch, yaw):
+        cy = np.cos(yaw * 0.5)
+        sy = np.sin(yaw * 0.5)
+        cp = np.cos(pitch * 0.5)
+        sp = np.sin(pitch * 0.5)
+        cr = np.cos(roll * 0.5)
+        sr = np.sin(roll * 0.5)
+
+        w = cy * cp * cr + sy * sp * sr
+        x = cy * cp * sr - sy * sp * cr
+        y = sy * cp * sr + cy * sp * cr
+        z = sy * cp * cr - cy * sp * sr
+        return np.asarray([w, x, y, z])
+
+    def _convert_to_sincos(self, angle):
+        return np.array([np.sin(angle), np.cos(angle)])
+    
+    def constrain_angle_diff(self, angle_diff):
+        """
+        Constrain an angle difference to the range [-pi, pi].
+        """
+        return (angle_diff + np.pi) % (2 * np.pi) - np.pi

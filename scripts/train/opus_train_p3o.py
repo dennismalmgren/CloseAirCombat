@@ -54,7 +54,7 @@ def main(cfg: DictConfig):  # noqa: F821
 
     # Create environments
     train_env, eval_env = make_environment(cfg)
-
+    reward_keys = list(train_env.reward_spec.keys())
     # Create agent
     policy_module, value_module = make_ppo_models(cfg, eval_env, device)
     actor = policy_module
@@ -199,11 +199,19 @@ def main(cfg: DictConfig):  # noqa: F821
             episode_length = data["next", "step_count"][data["next", "done"]]
             log_info.update(
                 {
-                    "train/reward": episode_rewards.mean().item(),
+                  #  "train/reward": episode_rewards.mean().item(),
                     "train/episode_length": episode_length.sum().item()
                     / len(episode_length),
                 }
             )
+            for reward_key in reward_keys:
+                log_info.update(
+                    {
+                        f"train/{reward_key}": data["next", "episode_" + reward_key][
+                            data["next", "done"]
+                        ].mean().item()
+                    }
+                )
 
         training_start = time.time()
         for j in range(cfg_loss_ppo_epochs):
@@ -262,16 +270,22 @@ def main(cfg: DictConfig):  # noqa: F821
                 actor.eval()
                 eval_start = time.time()
                 test_rewards, test_lengths = eval_model(
-                    actor, eval_env, num_episodes=cfg_logger_num_test_episodes
+                    actor, eval_env, reward_keys, num_episodes=cfg_logger_num_test_episodes
                 )
                 eval_time = time.time() - eval_start
+
                 log_info.update(
                     {
-                        "eval/reward": test_rewards.mean(),
+                        #"eval/reward": test_rewards.mean(),
                         "eval/episode_length": test_lengths.mean(),
                         "eval/time": eval_time,
                     }
                 )
+                for key, val in test_rewards.items():
+                    log_info.update({f"eval/{key}": np.asarray(val).mean().item()})
+
+                    
+
                 actor.train()
                 savestate = {
                         'model_actor': actor.state_dict(),
