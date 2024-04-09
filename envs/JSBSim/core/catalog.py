@@ -195,7 +195,7 @@ class JsbsimCatalog(Property, Enum):
     fcs_elevator_cmd_norm = Property("fcs/elevator-cmd-norm", "elevator commanded position, normalised", -1.0, 1.0)
     fcs_rudder_cmd_norm = Property("fcs/rudder-cmd-norm", "rudder commanded position, normalised", -1.0, 1.0)
     fcs_throttle_cmd_norm = Property(
-        "fcs/throttle-cmd-norm", "throttle commanded position, normalised", 0.0, 0.9, update=update_equal_throttle_cmd
+        "fcs/throttle-cmd-norm", "throttle commanded position, normalised", 0.0, 1.0, update=update_equal_throttle_cmd
     )
     fcs_mixture_cmd_norm = Property(
         "fcs/mixture-cmd-norm", "engine mixture setting, normalised", 0.0, 1.0, update=update_equal_mixture_cmd
