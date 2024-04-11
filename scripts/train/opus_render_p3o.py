@@ -30,7 +30,7 @@ from objectives import P3OLoss
 
 from scripts.train.opus_utils_p3o import (
     make_environment,
-    make_ppo_models,
+    make_agent,
     eval_model
 )
 
@@ -45,7 +45,7 @@ def main(cfg: DictConfig):  # noqa: F821
     train_env, eval_env = make_environment(cfg)
 
     # Create agent
-    policy_module, value_module = make_ppo_models(cfg, eval_env, device)
+    policy_module, value_module = make_agent(cfg, eval_env, device)
     actor = policy_module
     critic = value_module
 
@@ -72,8 +72,8 @@ def main(cfg: DictConfig):  # noqa: F821
     if load_from_saved_models:
         run_id = ""
     else:
-        run_id = "2024-04-08/00-36-31/"
-    iteration = 19912000
+        run_id = "2024-04-10/00-41-24/"
+    iteration = 16912000
     model_load_filename = f"{model_name}_{iteration}.pt"
     load_model_dir = outputs_folder + run_id
     print('Loading model from ' + load_model_dir)

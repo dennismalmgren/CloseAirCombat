@@ -31,7 +31,7 @@ from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
 
 from torchrl.record.loggers import generate_exp_name, get_logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-from objectives import P3OLoss
+from objectives import P3OLossGauss
 
 from scripts.train.opus_utils_p3o import (
     make_environment,
@@ -61,7 +61,7 @@ def main(cfg: DictConfig):  # noqa: F821
     critic = value_module
 
    
-    loss_module = P3OLoss(
+    loss_module = P3OLossGauss(
         actor_network=actor,
         critic_network=critic,
         #clip_epsilon=cfg.optim.clip_epsilon,
