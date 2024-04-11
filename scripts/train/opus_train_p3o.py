@@ -176,13 +176,13 @@ def main(cfg: DictConfig):  # noqa: F821
 
     #extract cfg variables
     cfg_loss_ppo_epochs = cfg.optim.ppo_epochs
-    cfg_optim_anneal_lr = cfg.optim.anneal_lr
+    #cfg_optim_anneal_lr = cfg.optim.anneal_lr
     cfg_optim_lr = cfg.optim.lr
+    cfg_optim_max_grad_norm = cfg.optim.max_grad_norm
     cfg_loss_anneal_clip_eps = cfg.optim.anneal_clip_epsilon
     cfg_loss_clip_epsilon = cfg.optim.clip_epsilon
     cfg_logger_test_interval = cfg.logger.test_interval
     cfg_logger_num_test_episodes = cfg.logger.num_test_episodes
-
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
 
 
@@ -239,7 +239,8 @@ def main(cfg: DictConfig):  # noqa: F821
                 # Backward pass
                 actor_loss.backward()
                 critic_loss.backward()
-
+                torch.nn.utils.clip_grad_norm_(actor.parameters(), cfg_optim_max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg_optim_max_grad_norm)
                 # Update the networks
                 actor_optim.step()
                 critic_optim.step()

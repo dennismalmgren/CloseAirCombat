@@ -72,8 +72,8 @@ def main(cfg: DictConfig):  # noqa: F821
     if load_from_saved_models:
         run_id = ""
     else:
-        run_id = "2024-04-10/00-41-24/"
-    iteration = 16912000
+        run_id = "2024-04-10/01-12-36/"
+    iteration = 10000000
     model_load_filename = f"{model_name}_{iteration}.pt"
     load_model_dir = outputs_folder + run_id
     print('Loading model from ' + load_model_dir)
