@@ -160,7 +160,7 @@ class JsbsimCatalog(Property, Enum):
     fcs_spoiler_pos_norm = Property("fcs/spoiler-pos-norm", "normalised")
     fcs_steer_pos_deg = Property("fcs/steer-pos-deg", "deg")
     fcs_throttle_pos_norm = Property(
-        "fcs/throttle-pos-norm", "throttle position, normalised", 0, 1, update=update_equal_throttle_pos
+        "fcs/throttle-pos-norm", "throttle position, normalised", 0, 0.9, update=update_equal_throttle_pos
     )
     fcs_mixture_pos_norm = Property("fcs/mixture-pos-norm", "normalised", update=update_equal_mixture_pos)
     gear_gear_pos_norm = Property("gear/gear-pos-norm", "landing gear position, normalised", 0, 1)

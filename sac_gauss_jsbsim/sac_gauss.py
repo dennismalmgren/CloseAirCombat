@@ -113,8 +113,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
         if load_from_saved_models:
             run_id = ""
         else:
-            run_id = "2024-04-08/04-03-03/"
-        iteration = 1000000
+            run_id = "2024-04-11/22-40-59/"
+        iteration = 100000
         model_load_filename = f"{model_name}_{iteration}.pt"
         load_model_dir = outputs_folder + run_id
         print('Loading model from ' + load_model_dir)
@@ -130,12 +130,13 @@ def main(cfg: "DictConfig"):  # noqa: F821
         optimizer_actor.load_state_dict(optimizer_actor_state)
         optimizer_critic.load_state_dict(optimizer_critic_state)
         optimizer_alpha.load_state_dict(optimizer_alpha_state)
+        replay_buffer.loads(load_model_dir + f"replay_buffer_{collected_frames}.rb")
     else:          
         collected_frames = 0
     frames_remaining = cfg.collector.total_frames - collected_frames
     #we need to store the replay buffer...
     # Create off-policy collector
-    collector = make_collector(cfg, train_env, exploration_policy, frames_remaining)
+    collector = make_collector(cfg, train_env, exploration_policy, collected_frames, frames_remaining)
 
     # Main loop
     start_time = time.time()
@@ -257,13 +258,18 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     auto_cast_to_device=True,
                     break_when_any_done=True,
                 )
+                eval_episode_end = (
+                    eval_rollout["next", "done"]
+                    if eval_rollout["next", "done"].any()
+                    else eval_rollout["next", "truncated"]
+                )
                 eval_time = time.time() - eval_start
                 next_tensordict = eval_rollout["next"]
                 log_rewards = dict()                
                 for reward_key in reward_keys:
                     log_rewards[reward_key] = next_tensordict[reward_key][0, :, 0]
                 for key, val in log_rewards.items():
-                    metrics_to_log["eval/" + key] = val.mean().item()
+                    metrics_to_log["eval/" + key] = val.sum().item()
                     the_reward = val
                     the_return = torch.zeros_like(the_reward)
                     the_return[-1] = the_reward[-1]
@@ -280,7 +286,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
 
                 q_pred_diff = q_pred - pred_return
                 q_pred_diff = abs(q_pred_diff)
-
+                eval_episode_length = eval_rollout["next", "step_count"][eval_episode_end]
                 metrics_to_log["eval/q_pred_diff_mean"] = q_pred_diff.mean()
                 metrics_to_log["eval/q_pred_diff_max"] = q_pred_diff.max()
                 metrics_to_log["eval/q_pred_diff_min"] = q_pred_diff.min()
@@ -289,7 +295,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 metrics_to_log["eval/min_q_pred"] = torch.min(q_pred)
                 metrics_to_log["eval/mean_q_pred"] = torch.mean(q_pred)
                 metrics_to_log["eval/time"] = eval_time
-                metrics_to_log["eval/episode_length"] = len(eval_rollout)
+                metrics_to_log["eval/episode_length"] = eval_episode_length
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
         if abs(collected_frames % save_iter) < frames_per_batch:
@@ -302,6 +308,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     "collected_frames": {"collected_frames": collected_frames}
             }
             torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
+            replay_buffer.dumps("replay_buffer_{collected_frames}.rb")
+
         sampling_start = time.time()
 
     collector.shutdown()

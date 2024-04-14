@@ -47,7 +47,7 @@ logger:
   backend: wandb
   project_name: opus_heading
   group_name: null
-  exp_name: ${env.name}_SAC_Gauss
+  exp_name: opus_heading_SAC_Gauss
   mode: online
   eval_iter: 10_000
   save_iter: 100_000

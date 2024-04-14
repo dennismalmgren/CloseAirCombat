@@ -28,14 +28,14 @@ class OpusCurriculum(BaseCurriculum):
             init_heading_deg = env.np_random.uniform(0., 180.)
             init_altitude_m = env.np_random.uniform(2500., 9000.)
             init_velocities_u_mps = env.np_random.uniform(120., 365.)
-            init_lat_geod_deg = env.np_random.uniform(53.0, 59.0)
-            init_long_gc_deg = env.np_random.uniform(12.0, 16.0)
+           # init_lat_geod_deg = env.np_random.uniform(53.0, 59.0)
+          #  init_long_gc_deg = env.np_random.uniform(12.0, 16.0)
             agent_init_states[agent_id] = {
                 'ic_psi_true_deg': init_heading_deg,
                 'ic_h_sl_ft': init_altitude_m / 0.3048,
                 'ic_u_fps': init_velocities_u_mps / 0.3048,
-                'ic_long_gc_deg': init_long_gc_deg,
-                'ic_lat_geod_deg': init_lat_geod_deg,
+             #   'ic_long_gc_deg': init_long_gc_deg,
+              #  'ic_lat_geod_deg': init_lat_geod_deg,
             }
         return agent_init_states
     

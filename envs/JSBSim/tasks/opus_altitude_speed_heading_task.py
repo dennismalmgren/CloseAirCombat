@@ -68,7 +68,7 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
     def load_action_space(self):
         # aileron, elevator, rudder, throttle
         self.action_space = spaces.Box(low=np.asarray([-1.0, -1.0, -1.0, 0.0]),
-                                       high=np.asarray([1.0, 1.0, 1.0, 1.0]), dtype=np.float32, shape=(4,))
+                                       high=np.asarray([1.0, 1.0, 1.0, 0.9]), dtype=np.float32, shape=(4,))
 
     def reset(self, env):
         super().reset(env)

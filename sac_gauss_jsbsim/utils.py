@@ -115,12 +115,12 @@ def make_environment(cfg):
 # ---------------------------
 
 
-def make_collector(cfg, train_env, actor_model_explore, frames_remaining):
+def make_collector(cfg, train_env, actor_model_explore, collected_frames, frames_remaining):
     """Make collector."""
     collector = SyncDataCollector(
         train_env,
         actor_model_explore,
-        init_random_frames=cfg.collector.init_random_frames,
+        init_random_frames=max(0, cfg.collector.init_random_frames - collected_frames),
         frames_per_batch=cfg.collector.frames_per_batch,
         total_frames=frames_remaining,
         device=cfg.collector.device,
@@ -219,7 +219,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     # Define Critic Network
     #lets assume we have 3 outputs.
     
-    nbins = 51
+    nbins = 101
     qvalue_net_kwargs = {
         "num_cells": cfg.network.hidden_sizes,
         "out_features": nbins,
