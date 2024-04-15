@@ -560,10 +560,9 @@ class SACPredLoss(LossModule):
         loss_actor, metadata_actor = self._actor_loss(tensordict_reshape)
         loss_alpha = self._alpha_loss(log_prob=metadata_actor["log_prob"])
         tensordict_reshape.set(self.tensor_keys.priority, value_metadata["td_error"])
-        tensordict_reshape.set(self.tensor_keys.priority, value_metadata["td_error"])
-        tensordict_reshape.set("q_pred_max", value_metadata["q_pred_max"])
-        tensordict_reshape.set("q_pred_min", value_metadata["q_pred_min"])
-        tensordict_reshape.set("q_pred_mean", value_metadata["q_pred_mean"])
+        tensordict_reshape.set("q_pred", value_metadata["q_pred"])
+        tensordict_reshape.set("v_pred", value_metadata["v_pred"])
+
         if (loss_actor.shape != loss_qvalue.shape) or (
             loss_value is not None and loss_actor.shape != loss_value.shape
         ):
@@ -579,9 +578,8 @@ class SACPredLoss(LossModule):
             "loss_alpha": loss_alpha,
             "alpha": self._alpha,
             "entropy": entropy.detach().mean(),
-            "q_pred_max": tensordict_reshape["q_pred_max"].detach().mean(),
-            "q_pred_min": tensordict_reshape["q_pred_min"].detach().mean(),
-            "q_pred_mean": tensordict_reshape["q_pred_mean"].detach().mean(),
+            "q_pred": tensordict_reshape["q_pred"].detach().mean(),    
+            "v_pred": tensordict_reshape["v_pred"].detach().mean(),
         }
         if self._version == 1:
             out["loss_value"] = loss_value
@@ -741,11 +739,32 @@ class SACPredLoss(LossModule):
             target_value.expand_as(pred_val),
             loss_function=self.loss_function,
         ).sum(0)
+        v_pred = self._value_pred(tensordict_expand)
+
         metadata = {"td_error": td_error.detach().max(0)[0],
-                    "q_pred_max": q_pred.detach().max(0)[0],
-                    "q_pred_min": q_pred.detach().min(0)[0],
-                    "q_pred_mean": q_pred.detach().mean(0),}
+                    "q_pred": q_pred.detach().min(0)[0],
+                    "v_pred": v_pred.detach().min(0)[0],}
         return loss_qval, metadata
+    
+    def _value_pred(
+        self, tensordict: TensorDictBase
+    ) -> Tuple[Tensor, Dict[str, Tensor]]:
+        # value loss
+        td_copy = tensordict.clone(False)
+        with self.target_actor_network_params.to_module(self.actor_network):
+            action_dist = self.actor_network.get_dist(td_copy)  
+        action = td_copy['action']
+
+        qval = td_copy.get(self.tensor_keys.state_action_value).squeeze(-1)
+
+        log_p = action_dist.log_prob(action)
+        if log_p.shape != qval.shape:
+            raise RuntimeError(
+                f"Losses shape mismatch: {qval.shape} and {log_p.shape}"
+            )
+        target_val = qval - self._alpha * log_p
+
+        return target_val
 
     def _value_loss(
         self, tensordict: TensorDictBase

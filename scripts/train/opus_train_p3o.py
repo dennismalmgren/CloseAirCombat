@@ -68,7 +68,7 @@ def main(cfg: DictConfig):  # noqa: F821
         loss_critic_type=cfg.optim.loss_critic_type,
         entropy_coef=cfg.optim.entropy_coef,
         critic_coef=cfg.optim.critic_coef,
-        normalize_advantage=False,
+        normalize_advantage=True,
     )
 
     actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr, eps=1e-5)
@@ -184,7 +184,6 @@ def main(cfg: DictConfig):  # noqa: F821
     cfg_logger_test_interval = cfg.logger.test_interval
     cfg_logger_num_test_episodes = cfg.logger.num_test_episodes
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
-
 
     for i, data in enumerate(collector):
         log_info = {}

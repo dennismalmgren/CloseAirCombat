@@ -125,6 +125,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             losses = TensorDict({}, batch_size=[num_updates])
             norms = TensorDict({}, batch_size=[num_updates])
             q_preds = TensorDict({}, batch_size=[num_updates])
+            v_preds = TensorDict({}, batch_size=[num_updates])
             for i in range(num_updates):
                 # Sample from replay buffer
                 sampled_tensordict = replay_buffer.sample()
@@ -174,9 +175,10 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     "alpha_norm": alpha_norm
                 })
                 q_preds[i] = loss_td.select(
-                    "q_pred_min",
-                    "q_pred_max",
-                    "q_pred_mean",
+                    "q_pred",
+                )
+                v_preds[i] = loss_td.select(
+                    "v_pred",
                 )
                 # Update qnet_target params
                 target_net_updater.step()
@@ -208,9 +210,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
             metrics_to_log["train/q_norm"] = norms.get("critic_norm").mean().item()
             metrics_to_log["train/actor_norm"] = norms.get("actor_norm").mean().item()
             metrics_to_log["train/alpha_norm"] = norms.get("alpha_norm").mean().item()
-            metrics_to_log["train/q_pred_min"] = q_preds.get("q_pred_min").mean().item()
-            metrics_to_log["train/q_pred_max"] = q_preds.get("q_pred_max").mean().item()
-            metrics_to_log["train/q_pred_mean"] = q_preds.get("q_pred_mean").mean().item()
+            metrics_to_log["train/q_pred"] = q_preds.get("q_pred").mean().item()
+            metrics_to_log["train/v_pred"] = v_preds.get("v_pred").mean().item()
             metrics_to_log["train/alpha"] = loss_td["alpha"].item()
             metrics_to_log["train/entropy"] = loss_td["entropy"].item()
             metrics_to_log["train/sampling_time"] = sampling_time
@@ -252,21 +253,19 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     
                 metrics_to_log["eval/time"] = eval_time
                 metrics_to_log["eval/reward"] = next_tensordict["episode_reward"][eval_episode_end].mean().item()
-                
+                eval_rollout_clone = eval_rollout.clone(False).to(device)
                 q_pred = loss_module._vmap_qnetworkN0(
-                    eval_rollout.clone(False).to(device).select(*loss_module.qvalue_network.in_keys, strict=False),
+                    eval_rollout_clone,
                     loss_module.qvalue_network_params,
-                ).to('cpu')
+                )
+                v_pred = loss_module._value_pred(q_pred).min(0)[0].to('cpu')
                 q_pred = q_pred['state_action_value'].squeeze(-1)
-                q_pred_diff = q_pred - real_return
+                q_pred = q_pred.min(0)[0].to('cpu')
+                v_pred_diff = real_return - v_pred
                 eval_episode_length = eval_rollout["next", "step_count"][eval_episode_end]
-                metrics_to_log["eval/q_pred_diff_mean"] = q_pred_diff.mean()
-                metrics_to_log["eval/q_pred_diff_max"] = q_pred_diff.max()
-                metrics_to_log["eval/q_pred_diff_min"] = q_pred_diff.min()
-                metrics_to_log["eval/q_pred_diff_std"] = q_pred_diff.std()
-                metrics_to_log["eval/max_q_pred"] = torch.max(q_pred)
-                metrics_to_log["eval/min_q_pred"] = torch.min(q_pred)
-                metrics_to_log["eval/mean_q_pred"] = torch.mean(q_pred)
+                metrics_to_log["eval/v_pred"] = v_pred.mean()
+                metrics_to_log["eval/q_pred"] = q_pred.mean()
+                metrics_to_log["eval/v_pred_diff"] = v_pred_diff.mean()
                 metrics_to_log["eval/time"] = eval_time
                 metrics_to_log["eval/episode_length"] = eval_episode_length
                 
