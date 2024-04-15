@@ -1,6 +1,6 @@
 # environment and task
 env:
-  name: HalfCheetah-v5
+  name: Hopper-v5
   task: ""
   library: gymnasium
   max_episode_steps: 1000
@@ -9,7 +9,7 @@ env:
 # collector
 collector:
   total_frames: 1_000_000
-  init_random_frames: 2500
+  init_random_frames: 25000
   frames_per_batch: 1000
   init_env_steps: 1000
   device: cpu
