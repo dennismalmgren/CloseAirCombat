@@ -68,7 +68,7 @@ def main(cfg: DictConfig):  # noqa: F821
         loss_critic_type=cfg.optim.loss_critic_type,
         entropy_coef=cfg.optim.entropy_coef,
         critic_coef=cfg.optim.critic_coef,
-        normalize_advantage=True,
+        normalize_advantage=False,
     )
 
     actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr, eps=1e-5)

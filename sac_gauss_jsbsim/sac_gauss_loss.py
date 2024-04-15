@@ -526,12 +526,14 @@ class SACGaussLoss(LossModule):
         else:
             tensordict_reshape = tensordict
 
-
         loss_qvalue, value_metadata = self._qvalue_v2_loss(tensordict_reshape)
         loss_value = None
         loss_actor, metadata_actor = self._actor_loss(tensordict_reshape)
         loss_alpha = self._alpha_loss(log_prob=metadata_actor["log_prob"])
         tensordict_reshape.set(self.tensor_keys.priority, value_metadata["td_error"])
+        tensordict_reshape.set("q_pred_max", value_metadata["q_pred_max"])
+        tensordict_reshape.set("q_pred_min", value_metadata["q_pred_min"])
+        tensordict_reshape.set("q_pred_mean", value_metadata["q_pred_mean"])
         if (loss_actor.shape != loss_qvalue.shape) or (
             loss_value is not None and loss_actor.shape != loss_value.shape
         ):
@@ -547,6 +549,9 @@ class SACGaussLoss(LossModule):
             "loss_alpha": loss_alpha,
             "alpha": self._alpha,
             "entropy": entropy.detach().mean(),
+            "q_pred_max": tensordict_reshape["q_pred_max"].detach().mean(),
+            "q_pred_min": tensordict_reshape["q_pred_min"].detach().mean(),
+            "q_pred_mean": tensordict_reshape["q_pred_mean"].detach().mean(),
         }
 
         td_out = TensorDict(out, [])
@@ -606,7 +611,7 @@ class SACGaussLoss(LossModule):
             torch.Size([]),
             _run_checks=False,
         )
-
+    
     def _compute_target_gauss(self, tensordict) -> Tensor:
         r"""Value network for SAC v2.
 
@@ -679,18 +684,24 @@ class SACGaussLoss(LossModule):
         #now we just need to compute the target. haha.
         target_value = target_value.expand_as(pred_val)
         pred_val = pred_val.view(-1, pred_val.shape[-1])
+
         target_value = target_value.reshape(-1, target_value.shape[-1])
         loss_qval = torch.nn.functional.cross_entropy(pred_val, target_value, reduction="none")
         loss_qval = loss_qval.view(self.num_qvalue_nets, -1)
         loss_qval = loss_qval.sum(0)
         td_error = abs(pred_val - target_value).sum(-1)
         td_error = td_error.view(self.num_qvalue_nets, -1)
+        q_pred = pred_val.view(self.num_qvalue_nets, -1, pred_val.shape[-1])
+        q_pred = torch.sum(q_pred.exp() * self.support, dim=-1)
         #loss_qval = distance_loss(
         #    pred_val,
         #    target_value.expand_as(pred_val),
         #    loss_function=self.loss_function,
         #).sum(0)
-        metadata = {"td_error": td_error.detach().max(0)[0]}
+        metadata = {"td_error": td_error.detach().max(0)[0],
+                    "q_pred_max": q_pred.detach().max(0)[0],
+                    "q_pred_min": q_pred.detach().min(0)[0],
+                    "q_pred_mean": q_pred.detach().mean(0),}
         return loss_qval, metadata
 
     def _value_loss(

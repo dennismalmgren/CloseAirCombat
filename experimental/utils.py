@@ -13,6 +13,7 @@ from torchrl.data.replay_buffers.storages import LazyMemmapStorage
 from torchrl.envs import (
     CatTensors,
     Compose,
+    RewardScaling,
     DMControlEnv,
     DoubleToFloat,
     EnvCreator,
@@ -25,7 +26,7 @@ from torchrl.envs.utils import ExplorationType, set_exploration_type
 from torchrl.modules import MLP, ProbabilisticActor, ValueOperator
 from torchrl.modules.distributions import TanhNormal
 from torchrl.objectives import SoftUpdate
-from torchrl.objectives.sac import SACLoss
+from .sac_loss import SACPredLoss
 
 
 # ====================================================================
@@ -56,6 +57,7 @@ def apply_env_transforms(env, max_episode_steps=1000):
         Compose(
             InitTracker(),
             StepCounter(max_episode_steps),
+            #RewardScaling(loc=0.0, scale=0.01),
             DoubleToFloat(),
             RewardSum(),
         ),
@@ -229,7 +231,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
 def make_loss_module(cfg, model):
     """Make loss module and target network updater."""
     # Create SAC loss
-    loss_module = SACLoss(
+    loss_module = SACPredLoss(
         actor_network=model[0],
         qvalue_network=model[1],
         num_qvalue_nets=2,

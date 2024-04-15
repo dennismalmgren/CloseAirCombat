@@ -235,7 +235,7 @@ def make_ppo_modules(cfg, proof_environment):
         in_keys=["loc", "scale"],
         module=actor_module,
         distribution_class=distribution_class,
-        distribution_kwargs=distribution_kwargs,
+        distribution_kwargs=distribution_kwargs, 
         return_log_prob=True,
         default_interaction_type=ExplorationType.RANDOM,
     )
@@ -261,33 +261,45 @@ def make_ppo_modules(cfg, proof_environment):
     qvalue = TensorDictSequential(qvalue1, qvalue2)
 
     # Define value architecture
-    value_mlp = MLP(
-        in_features=input_shape[-1],
-        activation_class=torch.nn.Tanh,
-        out_features=1,
-        num_cells=[64, 64],
-    )
+    nbins = 51
+    value_net_kwargs = {
+        "in_features": input_shape[-1],
+        "activation_class": torch.nn.ReLU,
+        "out_features": nbins,
+        "num_cells": cfg.network.hidden_sizes,
+    }
 
-    # Initialize value weights
-    for layer in value_mlp.modules():
-        if isinstance(layer, torch.nn.Linear):
-            torch.nn.init.orthogonal_(layer.weight, 0.01)
-            layer.bias.data.zero_()
+    value_net = MLP(
+        **value_net_kwargs,
+    )
     
-    # Define value module
-    value_module = ValueOperator(
-        value_mlp,
-        in_keys=["observation"],
+    in_keys = ["observation"]
+    value1 = TensorDictModule(
+        in_keys=in_keys,
+        out_keys=["state_value"],
+        module=value_net,
     )
+    value2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_value"], ["state_value"])
+    
+    value_module = TensorDictSequential(value1, value2)
+    
+    Vmin = -500
+    Vmax = 500
+    #N_bins = nbins - 6
+    #delta = (Vmax - Vmin) / (nbins - 1)
+#    Vmin_final = Vmin - 3 * delta
+#    Vmax_final = Vmax + 3 * delta
+    support = torch.linspace(Vmin, Vmax, nbins)
 
-    return policy_module, value_module
+    return policy_module, value_module, support
 
 def make_agent(cfg, eval_env, device):
-    policy_module, value_module = make_ppo_modules(
+    policy_module, value_module, support = make_ppo_modules(
         cfg, eval_env
     )
     policy_module = policy_module.to(device)
     value_module = value_module.to(device)
+    support = support.to(device)
     with torch.no_grad():
         td = eval_env.reset()
         td = td.to(device)
@@ -295,7 +307,7 @@ def make_agent(cfg, eval_env, device):
         td = value_module(td)
         td = td.to("cpu")
 
-    return policy_module, value_module
+    return policy_module, value_module, support
 
 def eval_model(actor, test_env, reward_keys, num_episodes=3):
     test_rewards = dict()

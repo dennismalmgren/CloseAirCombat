@@ -132,9 +132,10 @@ class P3OLossGauss(PPOLoss):
         gamma: float = None,
         separate_losses: bool = False,
         beta: float = 1.0,
+        support: torch.Tensor = None,
         **kwargs,
     ):
-        super(P3OLoss, self).__init__(
+        super(self).__init__(
             actor_network,
             critic_network,
             entropy_bonus=entropy_bonus,
@@ -148,6 +149,23 @@ class P3OLossGauss(PPOLoss):
             **kwargs,
         )
         self.register_buffer("beta", torch.tensor(beta))
+        self.register_buffer("support", support)
+        atoms = self.support.numel()
+        Vmin = self.support.min()
+        Vmax = self.support.max()
+        delta_z = (Vmax - Vmin) / (atoms - 1)
+        self.register_buffer(
+            "stddev", (0.75 * delta_z).unsqueeze(-1)
+        )
+        self.register_buffer(
+            "support_plus",
+            self.support + delta_z / 2
+        )
+        self.register_buffer(
+            "support_minus",
+            self.support - delta_z / 2
+        )
+
 
     @property
     def out_keys(self):

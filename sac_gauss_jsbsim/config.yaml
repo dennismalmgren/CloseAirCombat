@@ -33,6 +33,7 @@ optim:
   target_update_polyak: 0.995
   alpha_init: 1.0
   adam_eps: 1.0e-8
+  max_grad_norm: 10.0
 
 # network
 network:
@@ -48,6 +49,6 @@ logger:
   project_name: opus_heading
   group_name: null
   exp_name: ${env.name}_SAC_Gauss
-  mode: disabled
-  eval_iter: 10_000
+  mode: online
+  eval_iter: 1_000
   save_iter: 100_000

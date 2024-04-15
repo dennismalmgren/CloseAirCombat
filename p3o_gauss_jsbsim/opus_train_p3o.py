@@ -33,7 +33,7 @@ from torchrl.record.loggers import generate_exp_name, get_logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from objectives import P3OLossGauss
 
-from scripts.train.opus_utils_p3o import (
+from .opus_utils_p3o import (
     make_environment,
     make_agent,
     eval_model
@@ -56,7 +56,7 @@ def main(cfg: DictConfig):  # noqa: F821
     train_env, eval_env = make_environment(cfg)
     reward_keys = list(train_env.reward_spec.keys())
     # Create agent
-    policy_module, value_module = make_agent(cfg, eval_env, device)
+    policy_module, value_module, support = make_agent(cfg, eval_env, device)
     actor = policy_module
     critic = value_module
 
@@ -68,7 +68,8 @@ def main(cfg: DictConfig):  # noqa: F821
         loss_critic_type=cfg.optim.loss_critic_type,
         entropy_coef=cfg.optim.entropy_coef,
         critic_coef=cfg.optim.critic_coef,
-        normalize_advantage=True,
+        normalize_advantage=False,
+        support: torch.Tensor = None,
     )
 
     actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr, eps=1e-5)

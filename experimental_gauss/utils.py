@@ -26,7 +26,7 @@ from torchrl.modules import MLP, ProbabilisticActor, ValueOperator, Distribution
 
 from torchrl.modules.distributions import TanhNormal
 from torchrl.objectives import SoftUpdate
-from sac_gauss_loss import SACGaussLoss
+from .sac_gauss_loss import SACGaussLoss
 
 
 # ====================================================================

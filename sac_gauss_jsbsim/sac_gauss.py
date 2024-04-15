@@ -82,7 +82,9 @@ def main(cfg: "DictConfig"):  # noqa: F821
         optimizer_critic,
         optimizer_alpha,
     ) = make_sac_optimizer(cfg, loss_module)
-    
+    critic_params = list(loss_module.qvalue_network_params.flatten_keys().values())
+    actor_params = list(loss_module.actor_network_params.flatten_keys().values())
+
     #Load model (optional)
     load_model = False
     run_as_debug = False
@@ -113,8 +115,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
         if load_from_saved_models:
             run_id = ""
         else:
-            run_id = "2024-04-08/04-03-03/"
-        iteration = 1000000
+            run_id = "2024-04-11/22-40-59/"
+        iteration = 100000
         model_load_filename = f"{model_name}_{iteration}.pt"
         load_model_dir = outputs_folder + run_id
         print('Loading model from ' + load_model_dir)
@@ -130,12 +132,13 @@ def main(cfg: "DictConfig"):  # noqa: F821
         optimizer_actor.load_state_dict(optimizer_actor_state)
         optimizer_critic.load_state_dict(optimizer_critic_state)
         optimizer_alpha.load_state_dict(optimizer_alpha_state)
+        replay_buffer.loads(load_model_dir + f"replay_buffer_{collected_frames}.rb")
     else:          
         collected_frames = 0
     frames_remaining = cfg.collector.total_frames - collected_frames
     #we need to store the replay buffer...
     # Create off-policy collector
-    collector = make_collector(cfg, train_env, exploration_policy, frames_remaining)
+    collector = make_collector(cfg, train_env, exploration_policy, collected_frames, frames_remaining)
 
     # Main loop
     start_time = time.time()
@@ -152,6 +155,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     save_iter = cfg.logger.save_iter
     frames_per_batch = cfg.collector.frames_per_batch
     eval_rollout_steps = cfg.env.max_episode_steps
+    max_grad_norm = cfg.optim.max_grad_norm
 
     sampling_start = time.time()
     for i, tensordict in enumerate(collector):
@@ -172,6 +176,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
         training_start = time.time()
         if collected_frames >= init_random_frames:
             losses = TensorDict({}, batch_size=[num_updates])
+            norms = TensorDict({}, batch_size=[num_updates])
+            q_preds = TensorDict({}, batch_size=[num_updates])
             for i in range(num_updates):
                 # Sample from replay buffer
                 sampled_tensordict = replay_buffer.sample()
@@ -190,25 +196,43 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 q_loss = loss_td["loss_qvalue"]
                 alpha_loss = loss_td["loss_alpha"]
 
+    
                 # Update actor
                 optimizer_actor.zero_grad()
                 actor_loss.backward()
+                actor_norm = torch.nn.utils.clip_grad_norm_(
+                    actor_params, max_grad_norm
+                )
                 optimizer_actor.step()
 
                 # Update critic
                 optimizer_critic.zero_grad()
                 q_loss.backward()
+                critic_norm = torch.nn.utils.clip_grad_norm_(
+                    critic_params, max_grad_norm
+                )
                 optimizer_critic.step()
 
                 # Update alpha
                 optimizer_alpha.zero_grad()
                 alpha_loss.backward()
+                alpha_norm = torch.nn.utils.clip_grad_norm_(
+                    loss_module.log_alpha, max_grad_norm)
+                
                 optimizer_alpha.step()
-
                 losses[i] = loss_td.select(
                     "loss_actor", "loss_qvalue", "loss_alpha"
                 ).detach()
-
+                norms[i] = TensorDict({
+                    "actor_norm": actor_norm,
+                    "critic_norm": critic_norm,
+                    "alpha_norm": alpha_norm
+                })
+                q_preds[i] = loss_td.select(
+                    "q_pred_min",
+                    "q_pred_max",
+                    "q_pred_mean",
+                )
                 # Update qnet_target params
                 target_net_updater.step()
 
@@ -242,6 +266,12 @@ def main(cfg: "DictConfig"):  # noqa: F821
             metrics_to_log["train/q_loss"] = losses.get("loss_qvalue").mean().item()
             metrics_to_log["train/actor_loss"] = losses.get("loss_actor").mean().item()
             metrics_to_log["train/alpha_loss"] = losses.get("loss_alpha").mean().item()
+            metrics_to_log["train/q_norm"] = norms.get("critic_norm").mean().item()
+            metrics_to_log["train/actor_norm"] = norms.get("actor_norm").mean().item()
+            metrics_to_log["train/alpha_norm"] = norms.get("alpha_norm").mean().item()
+            metrics_to_log["train/q_pred_min"] = q_preds.get("q_pred_min").mean().item()
+            metrics_to_log["train/q_pred_max"] = q_preds.get("q_pred_max").mean().item()
+            metrics_to_log["train/q_pred_mean"] = q_preds.get("q_pred_mean").mean().item()
             metrics_to_log["train/alpha"] = loss_td["alpha"].item()
             metrics_to_log["train/entropy"] = loss_td["entropy"].item()
             metrics_to_log["train/sampling_time"] = sampling_time
@@ -257,13 +287,18 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     auto_cast_to_device=True,
                     break_when_any_done=True,
                 )
+                eval_episode_end = (
+                    eval_rollout["next", "done"]
+                    if eval_rollout["next", "done"].any()
+                    else eval_rollout["next", "truncated"]
+                )
                 eval_time = time.time() - eval_start
                 next_tensordict = eval_rollout["next"]
                 log_rewards = dict()                
                 for reward_key in reward_keys:
                     log_rewards[reward_key] = next_tensordict[reward_key][0, :, 0]
                 for key, val in log_rewards.items():
-                    metrics_to_log["eval/" + key] = val.mean().item()
+                    metrics_to_log["eval/" + key] = val.sum().item()
                     the_reward = val
                     the_return = torch.zeros_like(the_reward)
                     the_return[-1] = the_reward[-1]
@@ -275,12 +310,14 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     metrics_to_log["eval/mean_return_" + key] = torch.mean(the_return)
                     metrics_to_log["eval/min_return_" + key] = torch.min(the_return)
                     
-                eval_rollout_log_pm_q = model[1](eval_rollout.to(device)).to('cpu')
-                q_pred = torch.sum(eval_rollout_log_pm_q["state_action_value"][0].exp() * support.to('cpu'), dim=-1)
+                eval_rollout_log_pm_q = loss_module._vmap_qnetworkN0(
+                    eval_rollout.clone(False).to(device).select(*loss_module.qvalue_network.in_keys, strict=False),
+                    loss_module.qvalue_network_params,
+                ).to('cpu')
+                q_pred = torch.sum(eval_rollout_log_pm_q["state_action_value"].exp() * support.to('cpu'), dim=-1)
 
                 q_pred_diff = q_pred - pred_return
-                q_pred_diff = abs(q_pred_diff)
-
+                eval_episode_length = eval_rollout["next", "step_count"][eval_episode_end]
                 metrics_to_log["eval/q_pred_diff_mean"] = q_pred_diff.mean()
                 metrics_to_log["eval/q_pred_diff_max"] = q_pred_diff.max()
                 metrics_to_log["eval/q_pred_diff_min"] = q_pred_diff.min()
@@ -289,7 +326,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 metrics_to_log["eval/min_q_pred"] = torch.min(q_pred)
                 metrics_to_log["eval/mean_q_pred"] = torch.mean(q_pred)
                 metrics_to_log["eval/time"] = eval_time
-                metrics_to_log["eval/episode_length"] = len(eval_rollout)
+                metrics_to_log["eval/episode_length"] = eval_episode_length
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
         if abs(collected_frames % save_iter) < frames_per_batch:
@@ -302,6 +339,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     "collected_frames": {"collected_frames": collected_frames}
             }
             torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
+            replay_buffer.dumps("replay_buffer_{collected_frames}.rb")
+
         sampling_start = time.time()
 
     collector.shutdown()
