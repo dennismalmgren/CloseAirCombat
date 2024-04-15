@@ -18,6 +18,7 @@ from torchrl.envs import (
     EnvCreator,
     ParallelEnv,
     TransformedEnv,
+    CatFrames
 )
 from torchrl.envs.libs.gym import GymEnv, set_gym_backend
 from torchrl.envs.transforms import InitTracker, RewardSum, StepCounter
@@ -26,8 +27,10 @@ from torchrl.modules import MLP, ProbabilisticActor, ValueOperator, Distribution
 
 from torchrl.modules.distributions import TanhNormal
 from torchrl.objectives import SoftUpdate
-from .sac_gauss_loss import SACGaussLoss
+from sac_gauss_jsbsim.sac_gauss_loss import SACGaussLoss
 
+from envs.JSBSim.torchrl.jsbsim_wrapper import JSBSimWrapper
+from envs.JSBSim.envs import OpusTrainingEnv
 
 # ====================================================================
 # Environment utils
@@ -48,19 +51,40 @@ def env_maker(cfg, device="cpu"):
             env, CatTensors(in_keys=env.observation_spec.keys(), out_key="observation")
         )
     else:
-        raise NotImplementedError(f"Unknown lib {lib}.")
+        env = OpusTrainingEnv(cfg.env.name)
+        wrapped_env = JSBSimWrapper(env, categorical_action_encoding=False)
+        return wrapped_env 
+        
 
-
-def apply_env_transforms(env, max_episode_steps=1000):
-    transformed_env = TransformedEnv(
-        env,
-        Compose(
-            InitTracker(),
-            StepCounter(max_episode_steps),
-            DoubleToFloat(),
-            RewardSum(),
-        ),
-    )
+def apply_env_transforms(env, cfg, max_episode_steps=1000):
+    lib = cfg.env.library
+    if lib in ("gym", "gymnasium") or lib == "dm_control":
+        transformed_env = TransformedEnv(
+            env,
+            Compose(
+                InitTracker(),
+                StepCounter(max_episode_steps),
+                DoubleToFloat(),
+                RewardSum(),
+            ),
+        )
+    else:
+        reward_keys = ["reward"]
+        for reward_function in env.task[0].reward_functions:
+                for key in reward_function.reward_item_names:
+                    reward_keys.append(key)
+        transformed_env = TransformedEnv(
+            env,
+            Compose(
+                InitTracker(),
+                StepCounter(max_episode_steps),
+                DoubleToFloat(),
+                RewardSum(in_keys=reward_keys,
+                        reset_keys=reward_keys
+                                   ),
+                CatFrames(5, dim=-1, in_keys=["observation"])
+            ),
+        )
     return transformed_env
 
 
@@ -72,8 +96,8 @@ def make_environment(cfg):
         serial_for_single=True,
     )
     parallel_env.set_seed(cfg.env.seed)
-
-    train_env = apply_env_transforms(parallel_env, cfg.env.max_episode_steps)
+    reward_keys = parallel_env.task[0].get_reward_keys()
+    train_env = apply_env_transforms(parallel_env, cfg, cfg.env.max_episode_steps)
 
     eval_env = TransformedEnv(
         ParallelEnv(
@@ -83,7 +107,7 @@ def make_environment(cfg):
         ),
         train_env.transform.clone(),
     )
-    return train_env, eval_env
+    return train_env, eval_env, reward_keys
 
 
 # ====================================================================
@@ -91,14 +115,14 @@ def make_environment(cfg):
 # ---------------------------
 
 
-def make_collector(cfg, train_env, actor_model_explore):
+def make_collector(cfg, train_env, actor_model_explore, collected_frames, frames_remaining):
     """Make collector."""
     collector = SyncDataCollector(
         train_env,
         actor_model_explore,
-        init_random_frames=cfg.collector.init_random_frames,
+        init_random_frames=max(0, cfg.collector.init_random_frames - collected_frames),
         frames_per_batch=cfg.collector.frames_per_batch,
-        total_frames=cfg.collector.total_frames,
+        total_frames=frames_remaining,
         device=cfg.collector.device,
     )
     collector.set_seed(cfg.env.seed)
@@ -195,7 +219,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     # Define Critic Network
     #lets assume we have 3 outputs.
     
-    nbins = 51
+    nbins = 101
     qvalue_net_kwargs = {
         "num_cells": cfg.network.hidden_sizes,
         "out_features": nbins,
@@ -217,7 +241,14 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     qvalue = TensorDictSequential(qvalue1, qvalue2)
 
     model = nn.ModuleList([actor, qvalue]).to(device)
-    support = torch.linspace(-1000, 1000, nbins).to(device)
+    Vmin = -500
+    Vmax = 500
+    N_bins = nbins - 6
+    delta = (Vmax - Vmin) / (N_bins - 1)
+    Vmin_final = Vmin - 3 * delta
+    Vmax_final = Vmax + 3 * delta
+
+    support = torch.linspace(Vmin_final, Vmax_final, nbins).to(device)
 
     # init nets
     with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM):
@@ -242,7 +273,7 @@ def make_loss_module(cfg, model, support):
     loss_module = SACGaussLoss(
         actor_network=model[0],
         qvalue_network=model[1],
-        num_qvalue_nets=3,
+        num_qvalue_nets=2,
         loss_function=cfg.optim.loss_function,
         delay_actor=False,
         delay_qvalue=True,

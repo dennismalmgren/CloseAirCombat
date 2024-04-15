@@ -82,7 +82,9 @@ def main(cfg: "DictConfig"):  # noqa: F821
         optimizer_critic,
         optimizer_alpha,
     ) = make_sac_optimizer(cfg, loss_module)
-    
+    critic_params = list(loss_module.qvalue_network_params.flatten_keys().values())
+    actor_params = list(loss_module.actor_network_params.flatten_keys().values())
+
     #Load model (optional)
     load_model = False
     run_as_debug = False
@@ -153,6 +155,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     save_iter = cfg.logger.save_iter
     frames_per_batch = cfg.collector.frames_per_batch
     eval_rollout_steps = cfg.env.max_episode_steps
+    max_grad_norm = cfg.optim.max_grad_norm
 
     sampling_start = time.time()
     for i, tensordict in enumerate(collector):
@@ -173,6 +176,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
         training_start = time.time()
         if collected_frames >= init_random_frames:
             losses = TensorDict({}, batch_size=[num_updates])
+            norms = TensorDict({}, batch_size=[num_updates])
+            q_preds = TensorDict({}, batch_size=[num_updates])
             for i in range(num_updates):
                 # Sample from replay buffer
                 sampled_tensordict = replay_buffer.sample()
@@ -191,25 +196,43 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 q_loss = loss_td["loss_qvalue"]
                 alpha_loss = loss_td["loss_alpha"]
 
+    
                 # Update actor
                 optimizer_actor.zero_grad()
                 actor_loss.backward()
+                actor_norm = torch.nn.utils.clip_grad_norm_(
+                    actor_params, max_grad_norm
+                )
                 optimizer_actor.step()
 
                 # Update critic
                 optimizer_critic.zero_grad()
                 q_loss.backward()
+                critic_norm = torch.nn.utils.clip_grad_norm_(
+                    critic_params, max_grad_norm
+                )
                 optimizer_critic.step()
 
                 # Update alpha
                 optimizer_alpha.zero_grad()
                 alpha_loss.backward()
+                alpha_norm = torch.nn.utils.clip_grad_norm_(
+                    loss_module.log_alpha, max_grad_norm)
+                
                 optimizer_alpha.step()
-
                 losses[i] = loss_td.select(
                     "loss_actor", "loss_qvalue", "loss_alpha"
                 ).detach()
-
+                norms[i] = TensorDict({
+                    "actor_norm": actor_norm,
+                    "critic_norm": critic_norm,
+                    "alpha_norm": alpha_norm
+                })
+                q_preds[i] = loss_td.select(
+                    "q_pred_min",
+                    "q_pred_max",
+                    "q_pred_mean",
+                )
                 # Update qnet_target params
                 target_net_updater.step()
 
@@ -243,6 +266,12 @@ def main(cfg: "DictConfig"):  # noqa: F821
             metrics_to_log["train/q_loss"] = losses.get("loss_qvalue").mean().item()
             metrics_to_log["train/actor_loss"] = losses.get("loss_actor").mean().item()
             metrics_to_log["train/alpha_loss"] = losses.get("loss_alpha").mean().item()
+            metrics_to_log["train/q_norm"] = norms.get("critic_norm").mean().item()
+            metrics_to_log["train/actor_norm"] = norms.get("actor_norm").mean().item()
+            metrics_to_log["train/alpha_norm"] = norms.get("alpha_norm").mean().item()
+            metrics_to_log["train/q_pred_min"] = q_preds.get("q_pred_min").mean().item()
+            metrics_to_log["train/q_pred_max"] = q_preds.get("q_pred_max").mean().item()
+            metrics_to_log["train/q_pred_mean"] = q_preds.get("q_pred_mean").mean().item()
             metrics_to_log["train/alpha"] = loss_td["alpha"].item()
             metrics_to_log["train/entropy"] = loss_td["entropy"].item()
             metrics_to_log["train/sampling_time"] = sampling_time
@@ -281,11 +310,13 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     metrics_to_log["eval/mean_return_" + key] = torch.mean(the_return)
                     metrics_to_log["eval/min_return_" + key] = torch.min(the_return)
                     
-                eval_rollout_log_pm_q = model[1](eval_rollout.to(device)).to('cpu')
-                q_pred = torch.sum(eval_rollout_log_pm_q["state_action_value"][0].exp() * support.to('cpu'), dim=-1)
+                eval_rollout_log_pm_q = loss_module._vmap_qnetworkN0(
+                    eval_rollout.clone(False).to(device).select(*loss_module.qvalue_network.in_keys, strict=False),
+                    loss_module.qvalue_network_params,
+                ).to('cpu')
+                q_pred = torch.sum(eval_rollout_log_pm_q["state_action_value"].exp() * support.to('cpu'), dim=-1)
 
                 q_pred_diff = q_pred - pred_return
-                q_pred_diff = abs(q_pred_diff)
                 eval_episode_length = eval_rollout["next", "step_count"][eval_episode_end]
                 metrics_to_log["eval/q_pred_diff_mean"] = q_pred_diff.mean()
                 metrics_to_log["eval/q_pred_diff_max"] = q_pred_diff.max()

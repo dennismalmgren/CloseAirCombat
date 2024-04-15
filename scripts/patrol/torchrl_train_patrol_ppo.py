@@ -190,7 +190,6 @@ def main(cfg: "DictConfig"):  # noqa: F821
         frames_in_batch = data.numel()
         collected_frames += frames_in_batch * frame_skip
         pbar.update(data.numel())
-        continue
         # Get training rewards and episode lengths
         episode_rewards = data["next", "episode_reward"][data["next", "done"]]
         if len(episode_rewards) > 0:
