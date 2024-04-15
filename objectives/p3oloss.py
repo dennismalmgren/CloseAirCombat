@@ -187,6 +187,7 @@ class P3OLoss(PPOLoss):
             loc = advantage.mean()
             scale = advantage.std().clamp_min(1e-6)
             advantage = (advantage - loc) / scale
+        advantage = torch.nn.functional.relu(advantage)
         log_weight, dist = self._log_weight(tensordict_copy)
 
         log_weight_minus_1 = log_weight.exp() - 1

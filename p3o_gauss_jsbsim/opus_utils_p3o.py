@@ -7,7 +7,7 @@ import os
 import sys
 
 import torch
-from tensordict.nn import InteractionType, TensorDictModule
+from tensordict.nn import InteractionType, TensorDictModule, TensorDictSequential
 from tensordict.nn.distributions import NormalParamExtractor
 from torch import nn, optim
 from torchrl.collectors import SyncDataCollector
@@ -192,7 +192,7 @@ def make_replay_buffer(
 # -----
 def make_ppo_modules(cfg, proof_environment):
     input_shape = proof_environment.observation_spec["observation"].shape
-    
+    action_spec = proof_environment.action_spec
     # Define policy output distribution class
     num_outputs = proof_environment.action_spec.shape[-1]
     distribution_class = TanhNormal
@@ -202,42 +202,63 @@ def make_ppo_modules(cfg, proof_environment):
         "tanh_loc": False,
     }
 
+    actor_net_kwargs = {
+        "in_features":input_shape[-1],
+        "num_cells": cfg.network.hidden_sizes,
+        "out_features": 2 * action_spec.shape[-1],
+        "activation_class": torch.nn.ReLU,
+    }
+
     # Define policy architecture
-    policy_mlp = MLP(
-        in_features=input_shape[-1],
-        activation_class=torch.nn.Tanh,
-        out_features=num_outputs,  # predict only loc
-        num_cells=cfg.network.hidden_sizes,
+    actor_net = MLP(**actor_net_kwargs)
+
+    actor_extractor = NormalParamExtractor(
+        scale_mapping=f"biased_softplus_{cfg.network.default_policy_scale}",
+        scale_lb=cfg.network.scale_lb,
     )
+    actor_net = nn.Sequential(actor_net, actor_extractor)
 
-    # Initialize policy weights
-    for layer in policy_mlp.modules():
-        if isinstance(layer, torch.nn.Linear):
-            torch.nn.init.orthogonal_(layer.weight, 1.0)
-            layer.bias.data.zero_()
-
-    # Add state-independent normal scale
-    policy_mlp = torch.nn.Sequential(
-        policy_mlp,
-        AddStateIndependentNormalScale(
-            proof_environment.action_spec.shape[-1], scale_lb=1e-8
-        ),
+    in_keys = ["observation"]
+    in_keys_actor = in_keys
+    actor_module = TensorDictModule(
+        actor_net,
+        in_keys=in_keys_actor,
+        out_keys=[
+            "loc",
+            "scale",
+        ],
     )
 
     # Add probabilistic sampling of the actions
-    policy_module = ProbabilisticActor(
-        TensorDictModule(
-            module=policy_mlp,
-            in_keys=["observation"],
-            out_keys=["loc", "scale"],
-        ),
+    actor = ProbabilisticActor(
+        spec=action_spec,
         in_keys=["loc", "scale"],
-        spec=CompositeSpec(action=proof_environment.action_spec),
+        module=actor_module,
         distribution_class=distribution_class,
         distribution_kwargs=distribution_kwargs,
         return_log_prob=True,
         default_interaction_type=ExplorationType.RANDOM,
     )
+  # Define Critic Network
+    
+    nbins = 51
+    qvalue_net_kwargs = {
+        "num_cells": cfg.network.hidden_sizes,
+        "out_features": nbins,
+        "activation_class": torch.nn.ReLU,
+    }
+    qvalue_net = MLP(
+        **qvalue_net_kwargs,
+    )
+
+    qvalue1 = TensorDictModule(
+        in_keys=["action"] + in_keys,
+        out_keys=["state_action_value"],
+        module=qvalue_net,
+    )
+
+    qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"])
+    qvalue = TensorDictSequential(qvalue1, qvalue2)
 
     # Define value architecture
     value_mlp = MLP(
