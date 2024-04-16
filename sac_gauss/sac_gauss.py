@@ -21,6 +21,7 @@ import tqdm
 from tensordict import TensorDict
 from torchrl._utils import logger as torchrl_logger
 from torchrl.envs.utils import ExplorationType, set_exploration_type
+
 from torchrl.record.loggers import generate_exp_name, get_logger
 from .utils import (
     log_metrics,
@@ -32,7 +33,7 @@ from .utils import (
     make_sac_optimizer,
     calculate_returns,
     get_reward_keys,
-    get_model_parameters,
+    get_model_parameters,    
 )
 
 
@@ -63,10 +64,10 @@ def main(cfg: "DictConfig"):  # noqa: F821
     train_env, eval_env = make_environment(cfg)
 
     # Create agent
-    model, exploration_policy = make_sac_agent(cfg, train_env, eval_env, device)
+    model, exploration_policy, support = make_sac_agent(cfg, train_env, eval_env, device)
 
     # Create SAC loss
-    loss_module, target_net_updater = make_loss_module(cfg, model)
+    loss_module, target_net_updater = make_loss_module(cfg, model, support)
 
     # Create off-policy collector
     collector = make_collector(cfg, train_env, exploration_policy)
@@ -134,13 +135,14 @@ def main(cfg: "DictConfig"):  # noqa: F821
             for i in range(num_updates):
                 # Sample from replay buffer
                 sampled_tensordict = replay_buffer.sample()
+                sampled_tensordict = sampled_tensordict
                 if sampled_tensordict.device != device:
                     sampled_tensordict = sampled_tensordict.to(
                         device, non_blocking=True
                     )
                 else:
                     sampled_tensordict = sampled_tensordict.clone()
-
+            
                 # Compute loss
                 loss_td = loss_module(sampled_tensordict)
 
@@ -181,9 +183,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 })
                 preds[i] = loss_td.select(
                     "q_pred",
-                    "v_pred"
+                    "v_pred",
                 )
-
                 # Update qnet_target params
                 target_net_updater.step()
 
@@ -199,6 +200,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         )
         episode_rewards = tensordict["next", "episode_reward"][episode_end]
         next_td = tensordict["next"]
+        
         # Logging
         metrics_to_log = {}
         if len(episode_rewards) > 0:
@@ -237,7 +239,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     auto_cast_to_device=True,
                     break_when_any_done=True,
                 )
-                episode_end = (
+                eval_episode_end = (
                     eval_rollout["next", "done"]
                     if eval_rollout["next", "done"].any()
                     else eval_rollout["next", "truncated"]
@@ -256,15 +258,16 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 metrics_to_log["eval/v_pred"] = pred_td.get("v_pred").mean().item()
                 for reward_key in reward_keys:
                     metrics_to_log[f"eval/{reward_key}"] = next_td.get("episode_" + reward_key).mean().item()
-                    returns = calculate_returns(eval_rollout.get(("next", reward_key)), episode_end, cfg.optim.gamma)
+                    returns = calculate_returns(eval_rollout.get(("next", reward_key)), eval_episode_end, cfg.optim.gamma)
                     the_return = returns.mean().item()
                     metrics_to_log[f"eval/{reward_key}_return"] = the_return
-                    truncated_return = the_return[:, :-100].mean().item()
+                    truncated_return = returns[:, :-100].mean().item()
                     if not np.isnan(truncated_return):
-                        predicted_truncated_return = eval_loss_td.get("v_pred")[:, :-100].mean().item()
+                        v_preds = eval_loss_td.get("v_preds") #todo: support batch dims
+                        predicted_truncated_return = v_preds[:-100].mean().item()
                         metrics_to_log[f"eval/{reward_key}_return_truncated"] = truncated_return
                         metrics_to_log[f"eval/return_pred_diff"] = truncated_return - predicted_truncated_return
-                        
+                       
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
         sampling_start = time.time()
