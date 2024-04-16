@@ -16,6 +16,7 @@ class OpusCurriculum(BaseCurriculum):
         self.check_interval = 30 #seconds
         self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] 
         self.heading_turn_counts = 0
+        
 
     def get_init_state(self, agent_id):
         #hack. we know it's only one agent for now..
@@ -84,7 +85,7 @@ class OpusCurriculum(BaseCurriculum):
             delta = self.increment_size[heading_turn_count]
             delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
             delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
-            delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_u_increment
+            delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_vc_mps_increment
             delta_time = env.np_random.uniform(10, 60)
             
             new_altitude = agent.get_property_value(c.missions_cruise_target_position_h_sl_m) + delta_altitude

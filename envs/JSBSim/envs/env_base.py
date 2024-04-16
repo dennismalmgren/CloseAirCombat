@@ -58,8 +58,8 @@ class BaseEnv(gym.Env):
         return self.agent_interaction_steps / self.sim_freq
 
     def load(self):
-#        self.load_task()
         self.load_curriculum()
+        self.load_task()
         self.load_simulator()
         self.seed()
 
@@ -68,6 +68,9 @@ class BaseEnv(gym.Env):
   
     def load_curriculum(self):
         self.curriculum = None
+        pass
+
+    def load_task(self):
         pass
 
     def load_simulator(self):

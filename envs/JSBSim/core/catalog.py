@@ -440,6 +440,12 @@ class ExtraCatalog(Property, Enum):
         700
     )
 
+    travel_1_target_time_s = Property(
+        "training/travel-1-target-time-s",
+        "target time [s]",
+        0,
+        10000
+    )
     #heading_check_time = Property("heading_check_time", "time to check whether current time reaches heading time", 0, 1000000)
 
 
