@@ -1,8 +1,8 @@
 # task and env
 env:
-  name: Hopper-v5  # Use v4 to get rid of mujoco-py dependency
+  name: opus/opus_training  # Use v4 to get rid of mujoco-py dependency
   task: ""
-  library: gymnasium
+  library: opus
   seed: 42
   max_episode_steps: 1000
 
@@ -46,8 +46,8 @@ network:
 # logging
 logger:
   backend: wandb
-  project_name: sac_classification
+  project_name: opus_heading
   group_name: null
-  exp_name: ${env.name}_TD3
+  exp_name: opus_training_TD3
   mode: online
   eval_iter: 25000

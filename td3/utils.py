@@ -22,6 +22,7 @@ from torchrl.envs import (
     RewardSum,
     StepCounter,
     TransformedEnv,
+    CatFrames
 )
 from torchrl.envs.libs.gym import GymEnv, set_gym_backend
 from torchrl.envs.utils import ExplorationType, set_exploration_type
@@ -36,7 +37,8 @@ from torchrl.modules import (
 
 from torchrl.objectives import SoftUpdate
 from torchrl.objectives.td3 import TD3Loss
-
+from envs.JSBSim.torchrl.jsbsim_wrapper import JSBSimWrapper
+from envs.JSBSim.envs import OpusTrainingEnv
 
 # ====================================================================
 # Environment utils
@@ -56,22 +58,42 @@ def env_maker(cfg, device="cpu"):
         return TransformedEnv(
             env, CatTensors(in_keys=env.observation_spec.keys(), out_key="observation")
         )
+    elif lib == "opus":
+        env = OpusTrainingEnv(cfg.env.name)
+        wrapped_env = JSBSimWrapper(env, categorical_action_encoding=False)
+        return wrapped_env 
     else:
         raise NotImplementedError(f"Unknown lib {lib}.")
 
 
-def apply_env_transforms(env, max_episode_steps):
-    transformed_env = TransformedEnv(
-        env,
-        Compose(
-            StepCounter(max_steps=max_episode_steps),
-            InitTracker(),
-            DoubleToFloat(),
-            RewardSum(),
-        ),
-    )
-    return transformed_env
-
+def apply_env_transforms(env, cfg, max_episode_steps):
+    lib = cfg.env.library
+    if lib in ("gym", "gymnasium") or lib == "dm_control":    
+        transformed_env = TransformedEnv(
+            env,
+            Compose(
+                StepCounter(max_steps=max_episode_steps),
+                InitTracker(),
+                DoubleToFloat(),
+                RewardSum(),
+            ),
+        )
+        return transformed_env
+    else:
+        reward_keys = list(env.reward_spec.keys())
+        transformed_env = TransformedEnv(
+            env,
+            Compose(
+                InitTracker(),
+                StepCounter(max_episode_steps),
+                DoubleToFloat(),
+                RewardSum(in_keys=reward_keys,
+                        reset_keys=reward_keys
+                                   ),
+                CatFrames(5, dim=-1, in_keys=["observation"])
+            ),
+        )
+        return transformed_env
 
 def make_environment(cfg):
     """Make environments for training and evaluation."""
@@ -83,7 +105,7 @@ def make_environment(cfg):
     parallel_env.set_seed(cfg.env.seed)
 
     train_env = apply_env_transforms(
-        parallel_env, max_episode_steps=cfg.env.max_episode_steps
+        parallel_env, cfg, max_episode_steps=cfg.env.max_episode_steps
     )
 
     eval_env = TransformedEnv(
