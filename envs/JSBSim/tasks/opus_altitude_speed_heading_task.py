@@ -46,7 +46,6 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
             c.attitude_heading_true_rad,         # 8. heading   (unit: rad)
         ]
         
-
         self.mission_props = [
             c.missions_cruise_target_position_h_sl_m,
             c.missions_cruise_target_attitude_heading_true_rad,

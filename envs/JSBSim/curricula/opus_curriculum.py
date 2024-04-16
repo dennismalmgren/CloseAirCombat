@@ -28,21 +28,21 @@ class OpusCurriculum(BaseCurriculum):
             init_heading_deg = env.np_random.uniform(0., 180.)
             init_altitude_m = env.np_random.uniform(2500., 9000.)
             init_velocities_u_mps = env.np_random.uniform(120., 365.)
-           # init_lat_geod_deg = env.np_random.uniform(53.0, 59.0)
-          #  init_long_gc_deg = env.np_random.uniform(12.0, 16.0)
+            init_lat_geod_deg = env.np_random.uniform(57.0, 60.0)
+            init_long_gc_deg = env.np_random.uniform(15.0, 20.0)
             agent_init_states[agent_id] = {
                 'ic_psi_true_deg': init_heading_deg,
                 'ic_h_sl_ft': init_altitude_m / 0.3048,
                 'ic_u_fps': init_velocities_u_mps / 0.3048,
-             #   'ic_long_gc_deg': init_long_gc_deg,
-              #  'ic_lat_geod_deg': init_lat_geod_deg,
+                'ic_long_gc_deg': init_long_gc_deg,
+                'ic_lat_geod_deg': init_lat_geod_deg,
             }
         return agent_init_states
     
     def reset(self, env):
         self.task.reset(env)
 
-        # self.heading_turn_counts = 0
+        self.heading_turn_counts = 0
 
         # for agent_id in env.agents:
         #     agent = env.agents[agent_id]
@@ -73,39 +73,39 @@ class OpusCurriculum(BaseCurriculum):
         Returns:Q
             (tuple): (done, success, info)
         """
-        pass
-        #agent = env.agents[agent_id]
-        #current_time = agent.get_property_value(c.simulation_sim_time_sec)
-        #check_time = agent.get_property_value(c.travel_1_target_time_s)
+        agent = env.agents[agent_id]
+        current_time = agent.get_property_value(c.simulation_sim_time_sec)
+        check_time = agent.get_property_value(c.travel_1_target_time_s)
         #check time is initially 0. This task works because the agent was initialized with a delta heading of 0 (target heading == current heading)
         # check heading when simulation_time exceed check_time
 
-        # if -current_time >= check_time:
-        #     heading_turn_count = min(self.heading_turn_counts, len(self.increment_size) - 1)
-        #     delta = self.increment_size[heading_turn_count]
-        #     delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
-        #     delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
-        #     delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_u_increment
-        #     delta_time = env.np_random.uniform(10, 30)
+        if current_time >= check_time:
+            heading_turn_count = min(self.heading_turn_counts, len(self.increment_size) - 1)
+            delta = self.increment_size[heading_turn_count]
+            delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
+            delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
+            delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_u_increment
+            delta_time = env.np_random.uniform(10, 60)
             
-        #     new_altitude = agent.get_property_value(c.travel_1_target_position_h_sl_m) + delta_altitude
-        #     new_altitude = min(max(1000, new_altitude), 10000) #clamp to 500-10000m
-        #     agent.set_property_value(c.travel_1_target_position_h_sl_m, new_altitude)
+            new_altitude = agent.get_property_value(c.missions_cruise_target_position_h_sl_m) + delta_altitude
+            new_altitude = min(max(1000, new_altitude), 9000) #clamp to 500-9000m
+            agent.set_property_value(c.missions_cruise_target_position_h_sl_m, new_altitude)
 
         #     #move from current, not the one we were aiming for.
         #     #not sure which property we compare with for this one.
-        #     new_heading = agent.get_property_value(c.travel_1_target_attitude_psi_rad) * 180 / np.pi + delta_heading
-        #     new_heading = (new_heading + 360) % 360
-        #     new_heading = new_heading * np.pi / 180
-        #     agent.set_property_value(c.travel_1_target_attitude_psi_rad, new_heading)
+            new_heading = agent.get_property_value(c.missions_cruise_target_attitude_heading_true_rad) * 180 / np.pi + delta_heading
+            new_heading = (new_heading + 360) % 360
+            new_heading = new_heading * np.pi / 180
+            agent.set_property_value(c.missions_cruise_target_attitude_heading_true_rad, new_heading)
 
-        #     new_velocities_u = agent.get_property_value(c.travel_1_target_velocities_vc_mps) + delta_velocities_u
-        #     agent.set_property_value(c.travel_1_target_velocities_vc_mps, new_velocities_u)
+            new_velocities_u = agent.get_property_value(c.missions_cruise_target_velocities_vc_mps) + delta_velocities_u
+            new_velocities_u = min(max(120, new_velocities_u), 365)
+            agent.set_property_value(c.missions_cruise_target_velocities_vc_mps, new_velocities_u)
             
-        #     new_time = delta_time + current_time
-        #     agent.set_property_value(c.travel_1_target_time_s, new_time)
+            new_time = delta_time + current_time
+            agent.set_property_value(c.travel_1_target_time_s, new_time)
             
-        #     self.heading_turn_counts += 1
+            self.heading_turn_counts += 1
 
 
     
