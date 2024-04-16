@@ -255,12 +255,15 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 metrics_to_log["eval/v_pred"] = pred_td.get("v_pred").mean().item()
                 for reward_key in reward_keys:
                     metrics_to_log[f"eval/{reward_key}"] = next_td.get("episode_" + reward_key).mean().item()
-                    the_return = calculate_returns(eval_rollout.get(("next", reward_key)), episode_end, cfg.optim.gamma)
-                    metrics_to_log[f"eval/{reward_key}_return"] = the_return.mean().item()
+                    returns = calculate_returns(eval_rollout.get(("next", reward_key)), episode_end, cfg.optim.gamma)
+                    the_return = returns.mean().item()
+                    metrics_to_log[f"eval/{reward_key}_return"] = the_return
                     truncated_return = the_return[:, :-100].mean().item()
                     if not np.isnan(truncated_return):
-                        metrics_to_log[f"eval/{reward_key}_return_truncated"] = the_return[:, :-100].mean().item()
-
+                        predicted_truncated_return = eval_loss_td.get("v_pred")[:, :-100].mean().item()
+                        metrics_to_log[f"eval/{reward_key}_return_truncated"] = truncated_return
+                        metrics_to_log[f"eval/return_pred_diff"] = truncated_return - predicted_truncated_return
+                        
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
         sampling_start = time.time()
