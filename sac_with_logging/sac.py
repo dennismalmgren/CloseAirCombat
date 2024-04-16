@@ -21,7 +21,6 @@ import tqdm
 from tensordict import TensorDict
 from torchrl._utils import logger as torchrl_logger
 from torchrl.envs.utils import ExplorationType, set_exploration_type
-
 from torchrl.record.loggers import generate_exp_name, get_logger
 from .utils import (
     log_metrics,
@@ -31,6 +30,9 @@ from .utils import (
     make_replay_buffer,
     make_sac_agent,
     make_sac_optimizer,
+    calculate_returns,
+    get_reward_keys,
+    get_model_parameters,
 )
 
 
@@ -61,10 +63,10 @@ def main(cfg: "DictConfig"):  # noqa: F821
     train_env, eval_env = make_environment(cfg)
 
     # Create agent
-    model, exploration_policy, support = make_sac_agent(cfg, train_env, eval_env, device)
+    model, exploration_policy = make_sac_agent(cfg, train_env, eval_env, device)
 
     # Create SAC loss
-    loss_module, target_net_updater = make_loss_module(cfg, model, support)
+    loss_module, target_net_updater = make_loss_module(cfg, model)
 
     # Create off-policy collector
     collector = make_collector(cfg, train_env, exploration_policy)
@@ -84,8 +86,11 @@ def main(cfg: "DictConfig"):  # noqa: F821
         optimizer_critic,
         optimizer_alpha,
     ) = make_sac_optimizer(cfg, loss_module)
-    critic_params = list(loss_module.qvalue_network_params.flatten_keys().values())
-    actor_params = list(loss_module.actor_network_params.flatten_keys().values())
+    (
+        actor_parameters, 
+        critic_parameters, 
+        alpha_parameters
+    ) = get_model_parameters(loss_module)
 
     # Main loop
     start_time = time.time()
@@ -103,6 +108,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     frames_per_batch = cfg.collector.frames_per_batch
     eval_rollout_steps = cfg.env.max_episode_steps
     max_grad_norm = cfg.optim.max_grad_norm
+    reward_keys = get_reward_keys(eval_env)
 
     sampling_start = time.time()
     for i, tensordict in enumerate(collector):
@@ -128,14 +134,13 @@ def main(cfg: "DictConfig"):  # noqa: F821
             for i in range(num_updates):
                 # Sample from replay buffer
                 sampled_tensordict = replay_buffer.sample()
-                sampled_tensordict = sampled_tensordict
                 if sampled_tensordict.device != device:
                     sampled_tensordict = sampled_tensordict.to(
                         device, non_blocking=True
                     )
                 else:
                     sampled_tensordict = sampled_tensordict.clone()
-            
+
                 # Compute loss
                 loss_td = loss_module(sampled_tensordict)
 
@@ -147,23 +152,23 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 optimizer_actor.zero_grad()
                 actor_loss.backward()
                 actor_norm = torch.nn.utils.clip_grad_norm_(
-                    actor_params, max_grad_norm
-                )
+                    actor_parameters, max_grad_norm
+                )   
                 optimizer_actor.step()
 
                 # Update critic
                 optimizer_critic.zero_grad()
                 q_loss.backward()
                 critic_norm = torch.nn.utils.clip_grad_norm_(
-                    critic_params, max_grad_norm
-                )
+                    critic_parameters, max_grad_norm
+                )  
                 optimizer_critic.step()
 
                 # Update alpha
                 optimizer_alpha.zero_grad()
                 alpha_loss.backward()
                 alpha_norm = torch.nn.utils.clip_grad_norm_(
-                    loss_module.log_alpha, max_grad_norm)
+                    alpha_parameters, max_grad_norm)  
                 optimizer_alpha.step()
 
                 losses[i] = loss_td.select(
@@ -176,8 +181,9 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 })
                 preds[i] = loss_td.select(
                     "q_pred",
-                    "v_pred",
+                    "v_pred"
                 )
+
                 # Update qnet_target params
                 target_net_updater.step()
 
@@ -192,12 +198,15 @@ def main(cfg: "DictConfig"):  # noqa: F821
             else tensordict["next", "truncated"]
         )
         episode_rewards = tensordict["next", "episode_reward"][episode_end]
-
+        next_td = tensordict["next"]
         # Logging
         metrics_to_log = {}
         if len(episode_rewards) > 0:
             episode_length = tensordict["next", "step_count"][episode_end]
-            metrics_to_log["train/reward"] = episode_rewards.mean().item()
+            #Log rewards
+            for reward_key in reward_keys:
+                metrics_to_log[f"train/{reward_key}"] = next_td.get("episode_" + reward_key).mean().item()
+            #end log rewards
             metrics_to_log["train/episode_length"] = episode_length.sum().item() / len(
                 episode_length
             )
@@ -205,17 +214,19 @@ def main(cfg: "DictConfig"):  # noqa: F821
             metrics_to_log["train/q_loss"] = losses.get("loss_qvalue").mean().item()
             metrics_to_log["train/actor_loss"] = losses.get("loss_actor").mean().item()
             metrics_to_log["train/alpha_loss"] = losses.get("loss_alpha").mean().item()
-            metrics_to_log["train/q_norm"] = norms.get("critic_norm").mean().item()
-            metrics_to_log["train/actor_norm"] = norms.get("actor_norm").mean().item()
-            metrics_to_log["train/alpha_norm"] = norms.get("alpha_norm").mean().item()
-            metrics_to_log["train/q_pred"] = preds.get("q_pred").mean().item()
-            metrics_to_log["train/v_pred"] = preds.get("v_pred").mean().item()
             metrics_to_log["train/alpha"] = loss_td["alpha"].item()
             metrics_to_log["train/entropy"] = loss_td["entropy"].item()
             metrics_to_log["train/sampling_time"] = sampling_time
             metrics_to_log["train/training_time"] = training_time
 
-        reward_keys = ["reward"]
+            #Additional
+            metrics_to_log["train/q_norm"] = norms.get("critic_norm").mean().item()
+            metrics_to_log["train/actor_norm"] = norms.get("actor_norm").mean().item()
+            metrics_to_log["train/alpha_norm"] = norms.get("alpha_norm").mean().item()
+            metrics_to_log["train/q_pred"] = preds.get("q_pred").mean().item()
+            metrics_to_log["train/v_pred"] = preds.get("v_pred").mean().item()
+            #End Additional
+
         # Evaluation
         if abs(collected_frames % eval_iter) < frames_per_batch:
             with set_exploration_type(ExplorationType.MODE), torch.no_grad():
@@ -226,49 +237,30 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     auto_cast_to_device=True,
                     break_when_any_done=True,
                 )
-                eval_episode_end = (
+                episode_end = (
                     eval_rollout["next", "done"]
                     if eval_rollout["next", "done"].any()
                     else eval_rollout["next", "truncated"]
                 )
                 eval_time = time.time() - eval_start
-                next_tensordict = eval_rollout["next"]
-                log_rewards = dict()                
+                eval_reward = eval_rollout["next", "reward"].sum(-2).mean().item()
+                metrics_to_log["eval/reward"] = eval_reward
+                metrics_to_log["eval/time"] = eval_time
+                eval_loss_td = loss_module(eval_rollout.to(device)).to('cpu')
+                pred_td = eval_loss_td.select(
+                    "q_pred",
+                    "v_pred"
+                )
+                metrics_to_log["eval/q_pred"] = pred_td.get("q_pred").mean().item()
+                metrics_to_log["eval/v_pred"] = pred_td.get("v_pred").mean().item()
                 for reward_key in reward_keys:
-                    log_rewards[reward_key] = next_tensordict[reward_key].squeeze(-1)
-                for key, val in log_rewards.items():
-                    metrics_to_log["eval/" + key] = val.mean().item()
-                    the_reward = val
-                    the_return = torch.zeros_like(the_reward)
-                    the_return[..., -1] = the_reward[..., -1]
-                    for i in range(the_return.shape[-1] - 1, 1, -1):
-                        the_return[..., i - 1] = the_reward[..., i - 1] + cfg.optim.gamma * the_return[..., i]
-                    if key == "reward":
-                        real_return = the_return
-                    metrics_to_log["eval/max_return_" + key] = torch.max(the_return)
-                    metrics_to_log["eval/mean_return_" + key] = torch.mean(the_return)
-                    metrics_to_log["eval/min_return_" + key] = torch.min(the_return)
-                    
-                metrics_to_log["eval/time"] = eval_time
+                    metrics_to_log[f"eval/{reward_key}"] = next_td.get("episode_" + reward_key).mean().item()
+                    the_return = calculate_returns(eval_rollout.get(("next", reward_key)), episode_end, cfg.optim.gamma)
+                    metrics_to_log[f"eval/{reward_key}_return"] = the_return.mean().item()
+                    truncated_return = the_return[:, :-100].mean().item()
+                    if not np.isnan(truncated_return):
+                        metrics_to_log[f"eval/{reward_key}_return_truncated"] = the_return[:, :-100].mean().item()
 
-                eval_rollout_log_pm_q = loss_module._vmap_qnetworkN0(
-                    eval_rollout.clone(False).to(device).select(*loss_module.qvalue_network.in_keys, strict=False),
-                    loss_module.qvalue_network_params,
-                ).to('cpu')
-                q_pred = torch.sum(eval_rollout_log_pm_q["state_action_value"].exp() * support.to('cpu'), dim=-1)
-
-                q_pred_diff = q_pred - real_return
-                eval_episode_length = eval_rollout["next", "step_count"][eval_episode_end]
-                metrics_to_log["eval/q_pred_diff_mean"] = q_pred_diff.mean()
-                metrics_to_log["eval/q_pred_diff_max"] = q_pred_diff.max()
-                metrics_to_log["eval/q_pred_diff_min"] = q_pred_diff.min()
-                metrics_to_log["eval/q_pred_diff_std"] = q_pred_diff.std()
-                metrics_to_log["eval/max_q_pred"] = torch.max(q_pred)
-                metrics_to_log["eval/min_q_pred"] = torch.min(q_pred)
-                metrics_to_log["eval/mean_q_pred"] = torch.mean(q_pred)
-                metrics_to_log["eval/time"] = eval_time
-                metrics_to_log["eval/episode_length"] = eval_episode_length
-                
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
         sampling_start = time.time()
