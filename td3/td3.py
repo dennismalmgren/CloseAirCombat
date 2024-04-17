@@ -96,6 +96,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
     prb = cfg.replay_buffer.prb
     eval_rollout_steps = cfg.env.max_episode_steps
     eval_iter = cfg.logger.eval_iter
+    save_iter = cfg.logger.save_iter
+
     frames_per_batch = cfg.collector.frames_per_batch
     update_counter = 0
 
@@ -202,6 +204,17 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 metrics_to_log["eval/time"] = eval_time
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
+        if abs(collected_frames % save_iter) < frames_per_batch:
+            savestate = {
+                    'model': model.state_dict(),
+                    'loss_module': loss_module.state_dict(),
+                    'optimizer_actor': optimizer_actor.state_dict(),
+                    'optimizer_critic': optimizer_critic.state_dict(),
+                    "collected_frames": {"collected_frames": collected_frames}
+            }
+            torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
+            replay_buffer.dumps("replay_buffer_{collected_frames}.rb")
+
         sampling_start = time.time()
 
     collector.shutdown()

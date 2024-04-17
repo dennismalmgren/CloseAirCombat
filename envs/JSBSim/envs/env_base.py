@@ -115,7 +115,7 @@ class BaseEnv(gym.Env):
         for sim in self._jsbsims.values():
             sim.reload()
         self._tempsims.clear()
-
+        
         # reset task
         self.task.reset(self)
         self.curriculum.reset(self.task, self)

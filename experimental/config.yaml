@@ -1,8 +1,8 @@
 # environment and task
 env:
-  name: Hopper-v5
+  name: opus/opus_training
   task: ""
-  library: gymnasium
+  library: opus
   max_episode_steps: 1000
   seed: 42
 
@@ -50,4 +50,5 @@ logger:
   group_name: null
   exp_name: ${env.name}_SAC
   mode: online
-  eval_iter: 2500
+  eval_iter: 10_000
+  save_iter: 100_000

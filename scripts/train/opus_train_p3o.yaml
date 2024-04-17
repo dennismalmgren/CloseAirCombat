@@ -6,7 +6,7 @@ hydra:
 env:
   name: opus/opus_training
   task: "" #this is the task.
-  exp_name: ${env.name}_OPUS
+  exp_name: p3o_OPUS
   max_episode_steps: 1000
   seed: 55
   reward_scaling: 0.01
@@ -40,12 +40,12 @@ optim:
   loss_function: l2
   lr: 3.0e-4
   weight_decay: 0.0
-  mini_batch_size: 8000
+  mini_batch_size: 16000
   max_grad_norm: 10.0
   gae_lambda: 0.95
   clip_epsilon: 0.2
   loss_critic_type: l2
-  entropy_coef: 0.01
+  entropy_coef: 0.0
   critic_coef: 1.0
   ppo_epochs: 20
   anneal_lr: true
@@ -55,9 +55,9 @@ optim:
 # collector
 collector:
   total_frames: 30_000_000
-  frames_per_batch: 8000 #max_episode_steps * env_per_collector
+  frames_per_batch: 32000 #max_episode_steps * env_per_collector
   device: cpu
-  env_per_collector: 20
+  env_per_collector: 32
 
 network:
   hidden_sizes: [256, 256]

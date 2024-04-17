@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-from tensordict.nn import InteractionType, TensorDictModule
+from tensordict.nn import InteractionType, TensorDictModule, TensorDictSequential
 from tensordict.nn.distributions import NormalParamExtractor
 from torch import nn, optim
 from torchrl.collectors import SyncDataCollector
@@ -13,7 +13,6 @@ from torchrl.data.replay_buffers.storages import LazyMemmapStorage
 from torchrl.envs import (
     CatTensors,
     Compose,
-    RewardScaling,
     DMControlEnv,
     DoubleToFloat,
     EnvCreator,
@@ -24,13 +23,15 @@ from torchrl.envs import (
 from torchrl.envs.libs.gym import GymEnv, set_gym_backend
 from torchrl.envs.transforms import InitTracker, RewardSum, StepCounter
 from torchrl.envs.utils import ExplorationType, set_exploration_type
-from torchrl.modules import MLP, ProbabilisticActor, ValueOperator
+from torchrl.modules import MLP, ProbabilisticActor, ValueOperator, DistributionalQValueActor
+
 from torchrl.modules.distributions import TanhNormal
 from torchrl.objectives import SoftUpdate
-from .sac_loss import SACPredLoss
-#from torchrl.objectives import SACLoss
+from sac_gauss_jsbsim.sac_gauss_loss import SACGaussLoss
+
 from envs.JSBSim.torchrl.jsbsim_wrapper import JSBSimWrapper
 from envs.JSBSim.envs import OpusTrainingEnv
+
 # ====================================================================
 # Environment utils
 # -----------------
@@ -53,7 +54,7 @@ def env_maker(cfg, device="cpu"):
         env = OpusTrainingEnv(cfg.env.name)
         wrapped_env = JSBSimWrapper(env, categorical_action_encoding=False)
         return wrapped_env 
-
+        
 
 def apply_env_transforms(env, cfg, max_episode_steps=1000):
     lib = cfg.env.library
@@ -63,14 +64,15 @@ def apply_env_transforms(env, cfg, max_episode_steps=1000):
             Compose(
                 InitTracker(),
                 StepCounter(max_episode_steps),
-                #RewardScaling(loc=0.0, scale=0.01),
                 DoubleToFloat(),
                 RewardSum(),
             ),
         )
-        return transformed_env
     else:
-        reward_keys = list(env.reward_spec.keys())
+        reward_keys = ["reward"]
+        for reward_function in env.task[0].reward_functions:
+                for key in reward_function.reward_item_names:
+                    reward_keys.append(key)
         transformed_env = TransformedEnv(
             env,
             Compose(
@@ -83,7 +85,8 @@ def apply_env_transforms(env, cfg, max_episode_steps=1000):
                 CatFrames(5, dim=-1, in_keys=["observation"])
             ),
         )
-        return transformed_env
+    return transformed_env
+
 
 def make_environment(cfg):
     """Make environments for training and evaluation."""
@@ -93,7 +96,7 @@ def make_environment(cfg):
         serial_for_single=True,
     )
     parallel_env.set_seed(cfg.env.seed)
-
+    reward_keys = parallel_env.task[0].get_reward_keys()
     train_env = apply_env_transforms(parallel_env, cfg, cfg.env.max_episode_steps)
 
     eval_env = TransformedEnv(
@@ -104,7 +107,7 @@ def make_environment(cfg):
         ),
         train_env.transform.clone(),
     )
-    return train_env, eval_env
+    return train_env, eval_env, reward_keys
 
 
 # ====================================================================
@@ -112,14 +115,14 @@ def make_environment(cfg):
 # ---------------------------
 
 
-def make_collector(cfg, train_env, actor_model_explore):
+def make_collector(cfg, train_env, actor_model_explore, collected_frames, frames_remaining):
     """Make collector."""
     collector = SyncDataCollector(
         train_env,
         actor_model_explore,
-        init_random_frames=cfg.collector.init_random_frames,
+        init_random_frames=max(0, cfg.collector.init_random_frames - collected_frames),
         frames_per_batch=cfg.collector.frames_per_batch,
-        total_frames=cfg.collector.total_frames,
+        total_frames=frames_remaining,
         device=cfg.collector.device,
     )
     collector.set_seed(cfg.env.seed)
@@ -248,10 +251,10 @@ def make_sac_agent(cfg, train_env, eval_env, device):
 # ---------
 
 
-def make_loss_module(cfg, model):
+def make_loss_module(cfg, model, support):
     """Make loss module and target network updater."""
     # Create SAC loss
-    loss_module = SACPredLoss(
+    loss_module = SACGaussLoss(
         actor_network=model[0],
         qvalue_network=model[1],
         num_qvalue_nets=2,
@@ -259,6 +262,8 @@ def make_loss_module(cfg, model):
         delay_actor=False,
         delay_qvalue=True,
         alpha_init=cfg.optim.alpha_init,
+        support = support,
+        gamma = cfg.optim.gamma
     )
     loss_module.make_value_estimator(gamma=cfg.optim.gamma)
 

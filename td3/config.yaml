@@ -51,3 +51,4 @@ logger:
   exp_name: opus_training_TD3
   mode: online
   eval_iter: 25000
+  save_iter: 100000

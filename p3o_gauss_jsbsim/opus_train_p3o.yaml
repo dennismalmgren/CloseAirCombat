@@ -6,7 +6,7 @@ hydra:
 env:
   name: opus/opus_training
   task: "" #this is the task.
-  exp_name: ${env.name}_OPUS
+  exp_name:P3O_OPUS
   max_episode_steps: 1000
   seed: 55
   reward_scaling: 0.01
@@ -16,7 +16,7 @@ env:
 # Logger
 logger:
   backend: wandb
-  mode: disabled
+  mode: online
   exp_name: opus_heading
   project: opus_heading
   test_interval: 1_000
@@ -40,7 +40,7 @@ optim:
   loss_function: l2
   lr: 3.0e-4
   weight_decay: 0.0
-  mini_batch_size: 1000
+  mini_batch_size: 16000
   max_grad_norm: 10.0
   gae_lambda: 0.95
   clip_epsilon: 0.2

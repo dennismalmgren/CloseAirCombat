@@ -71,6 +71,7 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
 
     def reset(self, env):
         super().reset(env)
+        self.reset_smoothness(env)
         for agent_id in env.agents:
             agent = env.agents[agent_id]
             current_altitude = agent.get_property_value(c.position_h_sl_m)
@@ -81,6 +82,53 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
             agent.set_property_value(c.missions_cruise_target_attitude_heading_true_rad, current_heading_rad)
             agent.set_property_value(c.missions_cruise_target_velocities_vc_mps, current_speed)
 
+    def step(self, env):
+        super().step(env)
+        self.step_smoothness(env)
+
+    def step_smoothness(self, env):
+        for agent_id in env.agents:
+            agent = env.agents[agent_id]
+            self.smoothness_u[agent_id][:4] = self.smoothness_u[agent_id][1:]
+            self.smoothness_v[agent_id][:4] = self.smoothness_v[agent_id][1:]
+            self.smoothness_w[agent_id][:4] = self.smoothness_w[agent_id][1:]
+            self.smoothness_p[agent_id][:4] = self.smoothness_p[agent_id][1:]
+            self.smoothness_q[agent_id][:4] = self.smoothness_q[agent_id][1:]
+            self.smoothness_r[agent_id][:4] = self.smoothness_r[agent_id][1:]
+            self.smoothness_u[agent_id][4] = agent.get_property_value(c.accelerations_udot_ft_sec2) * 0.3048
+            self.smoothness_v[agent_id][4] = agent.get_property_value(c.accelerations_vdot_ft_sec2) * 0.3048
+            self.smoothness_w[agent_id][4] = agent.get_property_value(c.accelerations_wdot_ft_sec2) * 0.3048
+            self.smoothness_p[agent_id][4] = agent.get_property_value(c.accelerations_pdot_rad_sec2)
+            self.smoothness_q[agent_id][4] = agent.get_property_value(c.accelerations_qdot_rad_sec2)
+            self.smoothness_r[agent_id][4] = agent.get_property_value(c.accelerations_rdot_rad_sec2)
+        self.step_num += 1
+
+    def reset_smoothness(self, env):
+        self.step_num = 0
+        self.smoothness_u = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.smoothness_v = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.smoothness_w = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.smoothness_p = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.smoothness_q = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.smoothness_r = {agent_id: np.zeros(5) for agent_id in env.agents}
+
+    def calculate_smoothness(self, env, agent_id):
+        if self.step_num < 5:
+            return np.zeros(6)
+        smoothness_u = self.smoothness_u[agent_id]
+        smoothness_v = self.smoothness_v[agent_id]
+        smoothness_w = self.smoothness_w[agent_id]
+        smoothness_p = self.smoothness_p[agent_id]
+        smoothness_q = self.smoothness_q[agent_id]
+        smoothness_r = self.smoothness_r[agent_id]
+        #this is the second derivatives. we derive 4 third derivatives
+        smoothness_u = np.diff(smoothness_u, n=4)
+        smoothness_v = np.diff(smoothness_v, n=4)
+        smoothness_w = np.diff(smoothness_w, n=4)
+        smoothness_p = np.diff(smoothness_p, n=4)
+        smoothness_q = np.diff(smoothness_q, n=4)
+        smoothness_r = np.diff(smoothness_r, n=4)
+        return np.array([smoothness_u, smoothness_v, smoothness_w, smoothness_p, smoothness_q, smoothness_r])
     
     def calculate_task_variables(self, env, agent_id):
         agent = env.agents[agent_id]
