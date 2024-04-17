@@ -577,7 +577,7 @@ class SACGaussLoss(LossModule):
             dist = self.actor_network.get_dist(tensordict)
             a_reparm = dist.rsample()
         log_prob = dist.log_prob(a_reparm)
-
+        log_prob = torch.clamp(log_prob, -100, 100)
         td_q = tensordict.select(*self.qvalue_network.in_keys, strict=False)
         td_q.set(self.tensor_keys.action, a_reparm)
         td_q = self._vmap_qnetworkN0(
