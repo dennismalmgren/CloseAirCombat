@@ -86,7 +86,7 @@ class OpusCurriculum(BaseCurriculum):
             delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
             delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
             delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_vc_mps_increment
-            delta_time = env.np_random.uniform(10, 60)
+            delta_time = env.np_random.uniform(30, 60)
             
             new_altitude = agent.get_property_value(c.missions_cruise_target_position_h_sl_m) + delta_altitude
             new_altitude = min(max(1000, new_altitude), 9000) #clamp to 500-9000m

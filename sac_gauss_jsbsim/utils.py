@@ -219,7 +219,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     # Define Critic Network
     #lets assume we have 3 outputs.
     
-    nbins = 101
+    nbins = 51
     qvalue_net_kwargs = {
         "num_cells": cfg.network.hidden_sizes,
         "out_features": nbins,
@@ -241,8 +241,8 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     qvalue = TensorDictSequential(qvalue1, qvalue2)
 
     model = nn.ModuleList([actor, qvalue]).to(device)
-    Vmin = -500
-    Vmax = 500
+    Vmin = -1000
+    Vmax = 1000
     N_bins = nbins - 6
     delta = (Vmax - Vmin) / (N_bins - 1)
     Vmin_final = Vmin - 3 * delta
@@ -273,7 +273,7 @@ def make_loss_module(cfg, model, support):
     loss_module = SACGaussLoss(
         actor_network=model[0],
         qvalue_network=model[1],
-        num_qvalue_nets=3,
+        num_qvalue_nets=2,
         loss_function=cfg.optim.loss_function,
         delay_actor=False,
         delay_qvalue=True,
