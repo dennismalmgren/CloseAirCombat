@@ -308,6 +308,7 @@ class ExtraCatalog(Property, Enum):
                                                 sim.get_property_value(JsbsimCatalog.accelerations_wdot_ft_sec2) * 0.3048
                                             )
                                             )
+    
     position_h_agl_m = Property(
         "position/h-agl-m", "altitude above ground level [m]", -500, 26000, access="R",
         update=lambda sim: sim.set_property_value(
@@ -373,6 +374,12 @@ class ExtraCatalog(Property, Enum):
         update=lambda sim: sim.set_property_value(
             ExtraCatalog.velocities_w_mps,
             sim.get_property_value(JsbsimCatalog.velocities_w_fps) * 0.3048))
+
+    velocities_h_dot_mps = Property(
+        "velocities/h-dot-mps", "rate of altitude change [m/s]", access="R",
+        update=lambda sim: sim.set_property_value(
+            ExtraCatalog.velocities_h_dot_mps,
+            sim.get_property_value(JsbsimCatalog.velocities_h_dot_fps) * 0.3048))
 
     def update_detect_extreme_state(sim):
         """
