@@ -10,8 +10,8 @@ class OpusAltitudeSpeedHeadingReward(BaseRewardFunction):
     """
     def __init__(self, config):
         super().__init__(config)
-        self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_heading', '_alt', '_roll', '_speed', '_smoothness']]
-    #    self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_alt', '_roll', '_speed']]
+    #    self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_heading', '_alt', '_roll', '_speed', '_smoothness']]
+        self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_heading', '_alt', '_roll', '_speed']]
 
     def get_reward(self, task, env, agent_id):
         """
@@ -38,11 +38,12 @@ class OpusAltitudeSpeedHeadingReward(BaseRewardFunction):
         speed_error_scale = 24  # mps (~10%)
         speed_r = math.exp(-((delta_speed / speed_error_scale) ** 2))
         #move to its own reward.
-        smoothness_variables = task.calculate_smoothness(env, agent_id)
-        smoothness_r = 0.000001 * np.sum(smoothness_variables**2)
+       # smoothness_variables = task.calculate_smoothness(env, agent_id)
+       # smoothness_r = 0.000001 * np.sum(smoothness_variables**2)
         #Ignore heading
         #reward = (alt_r * roll_r * speed_r) ** (1 / 3)
         #return self._process(reward, agent_id, (alt_r, roll_r, speed_r))
     
-        reward = (heading_r * alt_r * roll_r * speed_r) ** (1 / 4) - smoothness_r
-        return self._process(reward, agent_id, (heading_r, alt_r, roll_r, speed_r, smoothness_r))
+        reward = (heading_r * alt_r * roll_r * speed_r) ** (1 / 4) #- smoothness_r
+       # return self._process(reward, agent_id, (heading_r, alt_r, roll_r, speed_r, smoothness_r))
+        return self._process(reward, agent_id, (heading_r, alt_r, roll_r, speed_r))

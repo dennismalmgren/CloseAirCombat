@@ -44,6 +44,13 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
             c.attitude_psi_rad,                 # 6. yaw     (unit: rad)
             c.velocities_vc_mps,                # 7. vc        (unit: m/s)
             c.attitude_heading_true_rad,         # 8. heading   (unit: rad)
+            c.accelerations_udot_m_sec2,
+            c.accelerations_vdot_m_sec2,
+            c.accelerations_wdot_m_sec2,
+            c.accelerations_pdot_rad_sec2,
+            c.accelerations_qdot_rad_sec2,
+            c.accelerations_rdot_rad_sec2,
+            c.velocities_h_dot_mps
         ]
         
         self.mission_props = [
@@ -61,7 +68,7 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
 
     def load_observation_space(self):
         task_variable_count = 6
-        state_variable_count = 11
+        state_variable_count = 12
         self.observation_space = spaces.Box(low=-10, high=10., shape=(task_variable_count + state_variable_count,))
 
     def load_action_space(self):
@@ -158,23 +165,30 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
 
         task_variables = self.calculate_task_variables(env, agent_id)
         task_variables = self.transform_task_variables(task_variables)        
+        altitude = self.state_prop_vals[0:1].copy()
+        altitude /= 5000 #unit: 5km
         uvw = self.state_prop_vals[1:4].copy()
         uvw = self.transform_uvw(uvw)
         attitude = self.state_prop_vals[4:7].copy()
         attitude = self._convert_to_quaternion(attitude[0], attitude[1], attitude[2])
-        attitude_heading = self.state_prop_vals[8]
-        attitude_heading = self._convert_to_sincos(attitude_heading)
         speed_vc = self.state_prop_vals[7:8].copy()
         speed_vc /= 340 #unit: mach
-        altitude = self.state_prop_vals[0:1].copy()
-        altitude /= 5000 #unit: 5km
-        obs = np.concatenate([uvw, attitude, attitude_heading, speed_vc, altitude, task_variables])
+        attitude_heading = self.state_prop_vals[8]
+        attitude_heading = self._convert_to_sincos(attitude_heading)
+        #uvw_acc = self.state_prop_vals[9:12].copy()
+        #uvw_acc = self.transform_uvw(uvw_acc)
+        #pqr_acc = self.state_prop_vals[12:15].copy()
+        #pqr_acc = self._convert_to_quaternion(pqr_acc[0], pqr_acc[1], pqr_acc[2])
+        altitude_v = self.state_prop_vals[15:16].copy()
+        altitude_v = self.transform_uvw(altitude_v)
+        obs = np.concatenate([uvw, attitude, attitude_heading, speed_vc, altitude, altitude_v, task_variables])
 
         norm_obs = np.clip(obs, self.observation_space.low, self.observation_space.high)
         return norm_obs
     
     def transform_uvw(self, uvw):
         return uvw / 340 #unit: mach
+    
     
     def transform_task_variables(self, task_variables):
         task_variables[0] = task_variables[0] / 5000 #delta altitude (unit: 1km)
