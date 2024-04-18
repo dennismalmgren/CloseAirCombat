@@ -49,31 +49,21 @@ def main(cfg: DictConfig):  # noqa: F821
     actor = policy_module
     critic = value_module
 
-    run_as_debug = False
-    load_from_saved_models = False
-    load_from_debug = False
+    load_from_saved_models = True
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
-    if run_as_debug:
-        if load_from_debug:
-            outputs_folder = "../../"
-        elif load_from_saved_models:
-            outputs_folder = "../../../scripts/train/saved_models/"
-        else:
-            outputs_folder = "../../../scripts/train/outputs/"
+    if load_from_saved_models:
+        outputs_folder = "../../../saved_models/"
     else:
-        if load_from_debug:
-            outputs_folder = "../../../../../outputs"
-        else:
-            outputs_folder = "../../"
+        outputs_folder = "../../"
     model_name = "training_snapshot"
     if load_from_saved_models:
-        model_name = "training_snapshot_waypoint"
+        model_name = "training_snapshot"
     if load_from_saved_models:
         run_id = ""
     else:
         run_id = "2024-04-10/01-12-36/"
-    iteration = 10000000
+    iteration = 29952000
     model_load_filename = f"{model_name}_{iteration}.pt"
     load_model_dir = outputs_folder + run_id
     print('Loading model from ' + load_model_dir)

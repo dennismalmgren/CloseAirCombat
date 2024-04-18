@@ -3,6 +3,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import math
+
 import torch
 from tensordict.nn import InteractionType, TensorDictModule, TensorDictSequential
 from tensordict.nn.distributions import NormalParamExtractor
@@ -159,7 +161,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
         "activation_class": get_activation(cfg),
     }
 
-    actor_net = MLP(**actor_net_kwargs)
+    actor_net_mlp = MLP(**actor_net_kwargs)
 
     dist_class = TanhNormal
     dist_kwargs = {
@@ -172,7 +174,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
         scale_mapping=f"biased_softplus_{cfg.network.default_policy_scale}",
         scale_lb=cfg.network.scale_lb,
     )
-    actor_net = nn.Sequential(actor_net, actor_extractor)
+    actor_net = nn.Sequential(actor_net_mlp, actor_extractor)
 
     in_keys_actor = in_keys
     actor_module = TensorDictModule(
@@ -197,6 +199,16 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     #lets assume we have 3 outputs.
     
     nbins = 51
+    Qmin = -100
+    Qmax = 500
+    Vmin = 0
+    Vmax = 14000
+    #N_bins = nbins - 6
+    delta = (Qmax - Qmin) / (nbins - 1)
+    K = math.ceil((Vmax - Vmin) // delta)
+    K = K + 1
+    nbins = K
+
     qvalue_net_kwargs = {
         "num_cells": cfg.network.hidden_sizes,
         "out_features": nbins,
@@ -214,11 +226,23 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     )
 
     qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"])
+    #qvalue2 = TensorDictModule(lambda x: x, ["state_action_value"], ["state_action_value"])
 
     qvalue = TensorDictSequential(qvalue1, qvalue2)
 
+
+#    K = math.ceil((Qmax - Q_min) / delta)
+
+    #Vmin_final = Vmin - 3 * delta
+    #Vmax_final = Vmax + 3 * delta
+    support = torch.linspace(Vmin, Vmax, nbins).to(device)
+    last_layer = qvalue_net[-1]
+    bias_data = torch.tensor([-0.01] * K + [-100.0] * (nbins - K))
+    bias_data = bias_data / torch.sum(bias_data)
+    last_layer.weight.data /= 100.0
+    last_layer.bias.data = bias_data
     model = nn.ModuleList([actor, qvalue]).to(device)
-    support = torch.linspace(-1000, 1000, nbins).to(device)
+
 
     # init nets
     with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM):

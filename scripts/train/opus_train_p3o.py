@@ -75,9 +75,9 @@ def main(cfg: DictConfig):  # noqa: F821
     critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr, eps=1e-5)
 
 
-    load_model = False
+    load_model = True
     run_as_debug = False
-    load_from_saved_models = False
+    load_from_saved_models = True
     load_from_debug = False
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
@@ -100,12 +100,12 @@ def main(cfg: DictConfig):  # noqa: F821
                 outputs_folder = "../../"
         model_name = "training_snapshot"
         if load_from_saved_models:
-            model_name = "training_snapshot_heading"
+            model_name = "training_snapshot"
         if load_from_saved_models:
             run_id = ""
         else:
             run_id = "2024-04-11/06-02-10/"
-        iteration = 15512000
+        iteration = 24640000
         model_load_filename = f"{model_name}_{iteration}.pt"
         load_model_dir = outputs_folder + run_id
         print('Loading model from ' + load_model_dir)
