@@ -283,8 +283,8 @@ def make_ppo_modules(cfg, proof_environment):
     
     value_module = TensorDictSequential(value1, value2)
     
-    Vmin = -500
-    Vmax = 500
+    Vmin = -10
+    Vmax = 200
     #N_bins = nbins - 6
     #delta = (Vmax - Vmin) / (nbins - 1)
 #    Vmin_final = Vmin - 3 * delta
