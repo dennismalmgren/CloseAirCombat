@@ -37,7 +37,7 @@ optim:
 
 # network
 network:
-  hidden_sizes: [256, 256]
+  hidden_sizes: [256, 256]  
   activation: relu
   default_policy_scale: 1.0
   scale_lb: 0.1
