@@ -259,12 +259,13 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     returns = calculate_returns(eval_rollout.get(("next", reward_key)), episode_end, cfg.optim.gamma)
                     the_return = returns.mean().item()
                     metrics_to_log[f"eval/{reward_key}_return"] = the_return
-                    truncated_return = the_return[:, :-100].mean().item()
+                    truncated_return = returns[:, :-100].mean().item()
                     if not np.isnan(truncated_return):
-                        predicted_truncated_return = eval_loss_td.get("v_pred")[:, :-100].mean().item()
+                        v_preds = eval_loss_td.get("v_preds") #todo: support batch dims
+                        predicted_truncated_return = v_preds[:-100].mean().item()
                         metrics_to_log[f"eval/{reward_key}_return_truncated"] = truncated_return
                         metrics_to_log[f"eval/return_pred_diff"] = truncated_return - predicted_truncated_return
-                        
+                       
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
         sampling_start = time.time()

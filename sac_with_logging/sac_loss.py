@@ -576,7 +576,9 @@ class SACLoss(LossModule):
             "alpha": self._alpha,
             "entropy": entropy.detach().mean(),
             "q_pred": value_metadata["q_pred"].detach().mean(),    
+            "q_preds": value_metadata["q_pred"].detach(),    
             "v_pred": value_metadata["v_pred"].detach().mean(),
+            "v_preds": value_metadata["v_pred"].detach(),
         }
         if self._version == 1:
             out["loss_value"] = loss_value
