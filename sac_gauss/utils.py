@@ -156,7 +156,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     if train_env.batch_size:
         action_spec = action_spec[(0,) * len(train_env.batch_size)]
     actor_net_kwargs = {
-        "num_cells": cfg.network.hidden_sizes,
+        "num_cells": cfg.network.hidden_sizes_policy,
         "out_features": 2 * action_spec.shape[-1],
         "activation_class": get_activation(cfg),
     }
@@ -208,7 +208,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     nbins = math.ceil((Vmax - Vmin) // delta)
 
     qvalue_net_kwargs = {
-        "num_cells": cfg.network.hidden_sizes,
+        "num_cells": cfg.network.hidden_sizes_q,
         "out_features": nbins,
         "activation_class": get_activation(cfg),
     }
