@@ -244,6 +244,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     if eval_rollout["next", "done"].any()
                     else eval_rollout["next", "truncated"]
                 )
+                eval_episode_terminated = eval_rollout["next", "terminated"].any(dim=-1)
+                episode_lengths = eval_rollout["next", "step_count"][eval_episode_end]
                 eval_time = time.time() - eval_start
                 next_tensordict = eval_rollout["next"]
                 eval_reward = eval_rollout["next", "reward"].sum(-2).mean().item()
@@ -260,11 +262,17 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     metrics_to_log[f"eval/{reward_key}"] = next_td.get("episode_" + reward_key).mean().item()
                     returns = calculate_returns(eval_rollout.get(("next", reward_key)), eval_episode_end, cfg.optim.gamma)
                     the_return = returns.mean().item()
+                    #return_avg = (returns / episode_lengths).mean().item()
                     metrics_to_log[f"eval/{reward_key}_return"] = the_return
-                    truncated_return = returns[:, :-100].mean().item()
+                    #metrics_to_log[f"eval/{reward_key}_return_avg"] = return_avg
+                    v_preds = eval_loss_td.get("v_preds").unsqueeze(0).unsqueeze(-1) #todo: support batch dims
+                    if eval_episode_terminated.any():
+                        truncated_return = (returns / episode_lengths).mean().item()
+                        predicted_truncated_return = (v_preds  / episode_lengths).mean().item()
+                    else: #truncated
+                        truncated_return = (returns[:, :900] / 900).mean().item()
+                        predicted_truncated_return = (v_preds[:, :900] / 900).mean().item()
                     if not np.isnan(truncated_return):
-                        v_preds = eval_loss_td.get("v_preds") #todo: support batch dims
-                        predicted_truncated_return = v_preds[:-100].mean().item()
                         metrics_to_log[f"eval/{reward_key}_return_truncated"] = truncated_return
                         metrics_to_log[f"eval/return_pred_diff"] = truncated_return - predicted_truncated_return
                        

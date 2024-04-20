@@ -201,7 +201,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     K = 51
     Qmin = -100
     Qmax = 500
-    Vmin = 0
+    Vmin = -100
     Vmax = 14000
     #N_bins = nbins - 6
     delta = (Qmax - Qmin) / (K - 1)
@@ -236,7 +236,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     support = torch.linspace(Vmin, Vmax, nbins).to(device)
     last_layer = qvalue_net[-1]
     #bias_data = torch.tensor([-0.01] * (K // 2) + [-100.0] * (nbins - (K // 2)))
-    bias_data = torch.tensor([-0.01] * (K) + [-100.0] * (nbins - (K)))
+    bias_data = torch.tensor([-0.01] * (20) + [-100.0] * (nbins - (20)))
     #bias_data = bias_data / torch.sum(bias_data)
     last_layer.bias.data = bias_data
     
