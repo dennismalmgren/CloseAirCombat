@@ -298,19 +298,19 @@ def make_sac_optimizer(cfg, loss_module):
 
     optimizer_actor = optim.Adam(
         actor_params,
-        lr=cfg.optim.lr,
+        lr=cfg.optim.lr_policy,
         weight_decay=cfg.optim.weight_decay,
-        eps=cfg.optim.adam_eps,
+   #     eps=cfg.optim.adam_eps,
     )
     optimizer_critic = optim.Adam(
         critic_params,
-        lr=cfg.optim.lr,
+        lr=cfg.optim.lr_q,
         weight_decay=cfg.optim.weight_decay,
-        eps=cfg.optim.adam_eps,
+  #      eps=cfg.optim.adam_eps,
     )
     optimizer_alpha = optim.Adam(
         [loss_module.log_alpha],
-        lr=3.0e-4,
+        lr=cfg.optim.lr_policy,
     )
     return optimizer_actor, optimizer_critic, optimizer_alpha
 
