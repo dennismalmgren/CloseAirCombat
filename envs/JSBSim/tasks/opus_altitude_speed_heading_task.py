@@ -4,7 +4,8 @@ from .task_base import BaseTask
 from ..core.catalog import Catalog as c
 from ..reward_functions import (
     SafeAltitudeReward, 
-    OpusAltitudeSpeedHeadingReward
+    OpusAltitudeSpeedHeadingReward,
+    OpusAltitudeReward
 )
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout
 from ..utils.utils import LLA2NED, NED2LLA
@@ -19,7 +20,7 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
         #self.n0, self.e0, self.u0 = 0, 0, 0
 
         self.reward_functions = [
-            OpusAltitudeSpeedHeadingReward(self.config),
+            OpusAltitudeReward(self.config),
             SafeAltitudeReward(self.config),
         ]
 
@@ -68,7 +69,7 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
 
     def load_observation_space(self):
         task_variable_count = 6
-        state_variable_count = 12
+        state_variable_count = 16
         self.observation_space = spaces.Box(low=-10, high=10., shape=(task_variable_count + state_variable_count,))
 
     def load_action_space(self):
@@ -157,6 +158,14 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
         current_heading = self.state_prop_vals[8]
         delta_heading = target_heading - current_heading
         return np.asarray([delta_altitude, delta_roll, delta_speed, delta_heading])
+
+    def quaternion_multiply(self, quaternion1, quaternion0):
+        w0, x0, y0, z0 = quaternion0
+        w1, x1, y1, z1 = quaternion1
+        return np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
+                        x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
+                        -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
+                        x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0])
     
     def get_obs(self, env, agent_id):
         agent = env.agents[agent_id]
@@ -177,11 +186,13 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
         attitude_heading = self._convert_to_sincos(attitude_heading)
         #uvw_acc = self.state_prop_vals[9:12].copy()
         #uvw_acc = self.transform_uvw(uvw_acc)
-        #pqr_acc = self.state_prop_vals[12:15].copy()
-        #pqr_acc = self._convert_to_quaternion(pqr_acc[0], pqr_acc[1], pqr_acc[2])
+        pqr_in = self.state_prop_vals[12:15].copy()
+        pqr_acc = np.zeros(4,)
+        pqr_acc[1:] = pqr_in
+        pqr_quat = 0.5 * self.quaternion_multiply(attitude, pqr_acc)
         altitude_v = self.state_prop_vals[15:16].copy()
         altitude_v = self.transform_uvw(altitude_v)
-        obs = np.concatenate([uvw, attitude, attitude_heading, speed_vc, altitude, altitude_v, task_variables])
+        obs = np.concatenate([uvw, attitude, pqr_quat, attitude_heading, speed_vc, altitude, altitude_v, task_variables])
 
         norm_obs = np.clip(obs, self.observation_space.low, self.observation_space.high)
         return norm_obs
