@@ -586,7 +586,7 @@ class SACGaussLoss(LossModule):
             self._cached_detached_qvalue_params,  # should we clone?
         )
         state_action_value = td_q.get(self.tensor_keys.state_action_value)
-        state_action_pmf = state_action_value.exp()
+        state_action_pmf = state_action_value.softmax(-1)
         state_action_value = (state_action_pmf * self.support).sum(-1, keepdim=True)
       
         min_q_logprob = state_action_value.min(0)[0].squeeze(-1)
@@ -650,9 +650,9 @@ class SACGaussLoss(LossModule):
             terminated = tensordict.get(("next", self.tensor_keys.terminated))
             discount = self.gamma
             next_sample_log_prob = next_sample_log_prob.unsqueeze(-1)
-            state_action_value_pmf = state_action_value.exp()
-            state_action_value_pmf = (state_action_value_pmf * self.support).sum(-1, keepdim=True)
-            next_state_value = state_action_value_pmf - self._alpha * next_sample_log_prob
+            state_action_value_pmf = state_action_value.softmax(-1)
+            next_state_action_value = (state_action_value_pmf * self.support).sum(-1, keepdim=True)
+            next_state_value = next_state_action_value - self._alpha * next_sample_log_prob
             next_state_value = next_state_value.min(0)[0]
             next_state_action_value_target_mean = reward + (1 - terminated.to(reward.dtype)) * discount * next_state_value
             next_state_action_value_target_mean = next_state_action_value_target_mean.expand_as(state_action_value[0])
@@ -662,8 +662,8 @@ class SACGaussLoss(LossModule):
             cdf_plus = dist.cdf(self.support_plus)
             cdf_minus = dist.cdf(self.support_minus)
             m = cdf_plus - cdf_minus
-            m[..., 0] = cdf_plus[..., 0]
-            m[..., -1] = 1 - cdf_minus[..., -1]
+            #m[..., 0] = cdf_plus[..., 0]
+            #m[..., -1] = 1 - cdf_minus[..., -1]
             m = m / m.sum(dim=-1, keepdim=True) 
             return m
         
@@ -674,7 +674,7 @@ class SACGaussLoss(LossModule):
         td_copy = tensordict.clone(False)
         qval = td_copy.get(self.tensor_keys.state_action_value).squeeze(-1)
         action = td_copy.get('action')
-        qval = torch.sum(qval.exp() * self.support, dim=-1)
+        qval = torch.sum(qval.softmax(-1) * self.support, dim=-1)
         with self.actor_network_params.to_module(self.actor_network):
             action_dist = self.actor_network.get_dist(td_copy)  
 
@@ -713,7 +713,7 @@ class SACGaussLoss(LossModule):
         td_error = abs(pred_val - target_value).sum(-1)
         td_error = td_error.view(self.num_qvalue_nets, -1)
         q_pred = pred_val.view(self.num_qvalue_nets, -1, pred_val.shape[-1])
-        q_pred = torch.sum(q_pred.exp() * self.support, dim=-1)
+        q_pred = torch.sum(q_pred.softmax(-1) * self.support, dim=-1)
         v_pred = self._value_pred(tensordict_expand)
         metadata = {"td_error": td_error.detach().max(0)[0],
                     "q_pred": q_pred.detach().min(0)[0],
