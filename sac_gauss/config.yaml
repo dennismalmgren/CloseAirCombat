@@ -4,7 +4,7 @@ env:
   task: ""
   library: gymnasium
   max_episode_steps: 1000
-  seed: 42
+  seed: 2
 
 # collector
 collector:
