@@ -28,7 +28,7 @@ optim:
   gamma: 0.99
   loss_function: l2
   lr_policy: 3.0e-4
-  lr_q: 1e-3
+  lr_q: 3e-4
   weight_decay: 0.0
   batch_size: 256
   target_update_polyak: 0.995
@@ -38,7 +38,7 @@ optim:
 
 # network
 network:
-  hidden_sizes_q: [1024, 1024]  
+  hidden_sizes_q: [2048, 2048]  
   hidden_sizes_policy: [256, 256]  
   activation: relu
   default_policy_scale: 1.0
