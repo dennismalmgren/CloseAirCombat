@@ -49,30 +49,37 @@ def main(cfg: DictConfig):  # noqa: F821
     actor = policy_module
     critic = value_module
 
+    load_model = True
     load_from_saved_models = True
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
-    if load_from_saved_models:
-        outputs_folder = "../../../saved_models/"
-    else:
-        outputs_folder = "../../"
-    model_name = "training_snapshot"
-    if load_from_saved_models:
-        model_name = "training_snapshot"
-    if load_from_saved_models:
-        run_id = ""
-    else:
-        run_id = "2024-04-10/01-12-36/"
-    iteration = 29952000
-    model_load_filename = f"{model_name}_{iteration}.pt"
-    load_model_dir = outputs_folder + run_id
-    print('Loading model from ' + load_model_dir)
-    loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
-    actor_state = loaded_state['model_actor']
-    critic_state = loaded_state['model_critic']
-    
-    actor.load_state_dict(actor_state)
-    critic.load_state_dict(critic_state)
+    if load_model:
+        #debug outputs is at the root.
+        #commandline outputs is at scripts/patrol/outputs
+        if load_from_saved_models:
+            outputs_folder = "../../../saved_models/"
+        else:
+            outputs_folder = "../../../../../outputs/"
+        if load_from_saved_models:
+            model_name = "training_snapshot_60000000_2"
+            run_folder_name = ""
+        else:
+            run_folder_name = "2024-04-11/06-02-10/"
+            model_name = "training_snapshot"
+
+        model_load_filename = f"{model_name}.pt"
+        load_model_dir = outputs_folder + run_folder_name
+        print('Loading model from ' + load_model_dir)
+        loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
+        actor_state = loaded_state['model_actor']
+        critic_state = loaded_state['model_critic']
+        #actor_optim_state = loaded_state['actor_optimizer']
+        #critic_optim_state = loaded_state['critic_optimizer']
+        #collected_frames = loaded_state['collected_frames']['collected_frames']
+        actor.load_state_dict(actor_state)
+        critic.load_state_dict(critic_state)
+        #actor_optim.load_state_dict(actor_optim_state)
+        #critic_optim.load_state_dict(critic_optim_state)
    
     exp_name = generate_exp_name("OPUS_Render", cfg.logger.exp_name)
     os.mkdir('runs')

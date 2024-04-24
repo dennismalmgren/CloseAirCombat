@@ -30,6 +30,9 @@ class OpusAltitudeSpeedReward(BaseRewardFunction):
         
         speed_error_scale = 24  # mps (~10%)
         speed_r = math.exp(-((delta_speed / speed_error_scale) ** 2))
+        
+        # smoothness_variables = task.calculate_smoothness(env, agent_id)
+        # smoothness_r = 0.000001 * np.sum(smoothness_variables**2)
 
         reward = (speed_r * alt_r * roll_r) ** (1 / 3)
         return self._process(reward, agent_id, (alt_r, roll_r, speed_r))
