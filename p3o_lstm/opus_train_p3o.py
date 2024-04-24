@@ -30,11 +30,11 @@ from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
 
 from torchrl.record.loggers import generate_exp_name, get_logger
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from objectives import P3OLoss
 
-from scripts.train.opus_utils_p3o import (
-    make_environment,
+from p3o_lstm.opus_utils_p3o import (
+    make_train_environment,
+    make_eval_environment,
     make_agent,
     eval_model
 )
@@ -53,16 +53,18 @@ def main(cfg: DictConfig):  # noqa: F821
     np.random.seed(cfg.random.seed)
 
     # Create environments
-    train_env, eval_env = make_environment(cfg)
-    reward_keys = list(train_env.reward_spec.keys())
+    eval_env = make_eval_environment(cfg)
     # Create agent
-    policy_module, value_module = make_agent(cfg, eval_env, device)
-    actor = policy_module
+    policy_inference_module, policy_training_module, policy_lstm, value_module = make_agent(cfg, eval_env, device)
+
+    #train_env = make_train_environment(cfg, policy_lstm)
+    reward_keys = list(eval_env.reward_spec.keys())
+    actor = policy_inference_module
     critic = value_module
 
    
     loss_module = P3OLoss(
-        actor_network=actor,
+        actor_network=policy_training_module,
         critic_network=critic,
         #clip_epsilon=cfg.optim.clip_epsilon,
         loss_critic_type=cfg.optim.loss_critic_type,
@@ -76,7 +78,7 @@ def main(cfg: DictConfig):  # noqa: F821
 
 
     load_model = True
-    load_from_saved_models = True
+    load_from_saved_models = False
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
     if load_model:
@@ -85,13 +87,13 @@ def main(cfg: DictConfig):  # noqa: F821
         if load_from_saved_models:
             outputs_folder = "../../../saved_models/"
         else:
-            outputs_folder = "../../../../../outputs/"
+            outputs_folder = "../../"
         if load_from_saved_models:
             model_name = "training_snapshot_40000000"
             run_folder_name = ""
         else:
-            run_folder_name = "2024-04-11/06-02-10/"
-            model_name = "training_snapshot"
+            run_folder_name = "2024-04-24/00-26-26/"
+            model_name = "training_snapshot_1008000"
 
         model_load_filename = f"{model_name}.pt"
         load_model_dir = outputs_folder + run_folder_name
@@ -112,7 +114,7 @@ def main(cfg: DictConfig):  # noqa: F821
 
  # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_environment(cfg, return_eval=False),
+        create_env_fn=make_train_environment(cfg, policy_lstm),
         policy=actor,
         frames_per_batch=cfg.collector.frames_per_batch,
         total_frames=frames_remaining,
