@@ -44,7 +44,12 @@ network:
   default_policy_scale: 1.0
   scale_lb: 0.1
   device: "cuda:0"
-
+  nbins: 101
+  q_min: -100
+  q_max: 1000
+  v_min: -200
+  v_max: 1100
+  
 # logging
 logger:
   backend: wandb
