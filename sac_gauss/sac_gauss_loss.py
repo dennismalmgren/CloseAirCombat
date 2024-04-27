@@ -307,7 +307,7 @@ class SACGaussLoss(LossModule):
         self.delay_qvalue = delay_qvalue
         self.num_qvalue_nets = num_qvalue_nets
         q_value_policy_params = policy_params
-        q_value_bias = qvalue_network[0].module[-1].bias.data.clone().expand(num_qvalue_nets, *qvalue_network[0].module[-1].bias.data.shape)
+        q_value_bias = qvalue_network.module[-1].bias.data.clone().expand(num_qvalue_nets, *qvalue_network.module[-1].bias.data.shape)
         self.convert_to_functional(
             qvalue_network,
             "qvalue_network",
@@ -316,8 +316,8 @@ class SACGaussLoss(LossModule):
             compare_against=q_value_policy_params,
         )
 
-        self.qvalue_network_params['module', '0', 'module', '4', 'bias'].data = q_value_bias.clone()
-        self.target_qvalue_network_params['module', '0', 'module', '4', 'bias'].data = q_value_bias.clone()
+        self.qvalue_network_params['module', '4', 'bias'].data = q_value_bias.clone()
+        self.target_qvalue_network_params['module', '4', 'bias'].data = q_value_bias.clone()
 
         self.loss_function = loss_function
         try:

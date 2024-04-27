@@ -223,11 +223,12 @@ def make_sac_agent(cfg, train_env, eval_env, device):
         module=qvalue_net,
     )
 
-    qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"]) 
+    #qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"]) 
     #we were supposed to remove this in favor of softmaxing later?
     #qvalue2 = TensorDictModule(lambda x: x, ["state_action_value"], ["state_action_value"])
 
-    qvalue = TensorDictSequential(qvalue1, qvalue2)
+    #qvalue = TensorDictSequential(qvalue1, qvalue2)
+    qvalue = qvalue1
 
 
 #    K = math.ceil((Qmax - Q_min) / delta)
