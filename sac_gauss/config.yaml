@@ -4,7 +4,7 @@ env:
   task: ""
   library: gymnasium
   max_episode_steps: 1000
-  seed: 2
+  seed: 19
 
 # collector
 collector:
@@ -31,7 +31,7 @@ optim:
   lr_q: 1e-3
   weight_decay: 0.0
   batch_size: 512
-  target_update_polyak: 0.99
+  target_update_polyak: 0.995
   alpha_init: 1.0
   adam_eps: 1.0e-8
   max_grad_norm: 10.0

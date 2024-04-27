@@ -656,7 +656,7 @@ class SACGaussLoss(LossModule):
             next_state_value = next_state_value.min(0)[0]
             next_state_action_value_target_mean = reward + (1 - terminated.to(reward.dtype)) * discount * next_state_value
             next_state_action_value_target_mean = next_state_action_value_target_mean.expand_as(state_action_value[0])
-
+            next_state_action_value_target_mean = next_state_action_value_target_mean.clamp(self.support.min(), self.support.max())
             stddev_expanded = self.stddev.expand_as(next_state_action_value_target_mean)
             dist = torch.distributions.Normal(next_state_action_value_target_mean, stddev_expanded)
             cdf_plus = dist.cdf(self.support_plus)
