@@ -28,7 +28,9 @@ from torchrl.modules import MLP, ProbabilisticActor, ValueOperator, Distribution
 from torchrl.envs.utils import CompositeSpec
 
 from torchrl.modules.distributions import TanhNormal
-from torchrl.objectives import SoftUpdate
+from envs.JSBSim.torchrl.jsbsim_wrapper import JSBSimWrapper
+from envs.JSBSim.envs import OpusTrainingEnv
+
 from .sac_gauss_loss import SACGaussLoss
 
 
@@ -50,8 +52,13 @@ def env_maker(cfg, device="cpu"):
         return TransformedEnv(
             env, CatTensors(in_keys=env.observation_spec.keys(), out_key="observation")
         )
+    elif lib == "opus":
+        env = OpusTrainingEnv(cfg.env.name)
+        wrapped_env = JSBSimWrapper(env, categorical_action_encoding=False)
+        return wrapped_env 
     else:
         raise NotImplementedError(f"Unknown lib {lib}.")
+
 
 
 def apply_env_transforms(env, max_episode_steps=1000):

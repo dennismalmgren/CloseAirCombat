@@ -77,7 +77,7 @@ def main(cfg: DictConfig):  # noqa: F821
     critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr, eps=1e-5)
 
 
-    load_model = True
+    load_model = False
     load_from_saved_models = False
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
