@@ -20,7 +20,7 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
         #self.n0, self.e0, self.u0 = 0, 0, 0
 
         self.reward_functions = [
-            OpusAltitudeReward(self.config),
+            OpusAltitudeSpeedHeadingReward(self.config),
             SafeAltitudeReward(self.config),
         ]
 

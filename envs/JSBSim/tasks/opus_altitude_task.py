@@ -57,8 +57,8 @@ class OpusAltitudeTask(BaseTask):
 
     def load_action_space(self):
         # aileron, elevator, rudder, throttle
-        self.action_space = spaces.Box(low=-1.0, 
-                                        high=1.0, dtype=np.float32, shape=(4,))
+        self.action_space = spaces.Box(low=np.asarray([-1.0, -1.0, -1.0, 0.0]),
+                                       high=np.asarray([1.0, 1.0, 1.0, 0.9]), dtype=np.float32, shape=(4,))
 
     def reset(self, env):
         super().reset(env)
@@ -110,6 +110,5 @@ class OpusAltitudeTask(BaseTask):
     
     def normalize_action(self, env, agent_id, action):
         #rescale final action to 0, 1
-        action[-1] = (action[-1] + 1) / 2
-        action = np.clip(action, self.action_space.low, self.action_space.high)
+#        action = np.clip(action, self.action_space.low, self.action_space.high)
         return action

@@ -31,12 +31,13 @@ from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
 
 from torchrl.record.loggers import generate_exp_name, get_logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-from objectives import P3OLoss
+from objectives import P3OLossGauss, ClipPPOLossGauss
 
-from scripts.train.opus_utils_p3o import (
+from .opus_utils_p3o import (
     make_environment,
     make_agent,
-    eval_model
+    eval_model,
+    load_model_state
 )
 
 @hydra.main(version_base="1.1", config_path=".", config_name="opus_train_p3o")
@@ -61,42 +62,28 @@ def main(cfg: DictConfig):  # noqa: F821
     critic = value_module
 
    
-    loss_module = P3OLoss(
+    loss_module = ClipPPOLoss(
         actor_network=actor,
         critic_network=critic,
-        #clip_epsilon=cfg.optim.clip_epsilon,
+        clip_epsilon=cfg.optim.clip_epsilon,
         loss_critic_type=cfg.optim.loss_critic_type,
         entropy_coef=cfg.optim.entropy_coef,
         critic_coef=cfg.optim.critic_coef,
-        normalize_advantage=True,
+        normalize_advantage=False,
+        #support= support,
     )
 
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr, eps=1e-5)
-    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr, eps=1e-5)
+    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr_policy, eps=cfg.optim.eps)
+    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr_q, eps=cfg.optim.eps)
 
-
-    load_model = True
-    load_from_saved_models = True
-    #debug outputs is at the root.
+    cfg_optim_policy_lr = cfg.optim.lr_policy
+    #cfg_optim_q_lr = cfg.optim.lr_q
+    load_model = False
     #commandline outputs is at scripts/patrol/outputs
     if load_model:
-        #debug outputs is at the root.
-        #commandline outputs is at scripts/patrol/outputs
-        if load_from_saved_models:
-            outputs_folder = "../../../saved_models/"
-        else:
-            outputs_folder = "../../../../../outputs/"
-        if load_from_saved_models:
-            model_name = "training_snapshot_40000000"
-            run_folder_name = ""
-        else:
-            run_folder_name = "2024-04-11/06-02-10/"
-            model_name = "training_snapshot"
+        model_dir="2024-04-29/19-25-53/"
+        loaded_state = load_model_state("training_snapshot_22384000", model_dir)
 
-        model_load_filename = f"{model_name}.pt"
-        load_model_dir = outputs_folder + run_folder_name
-        print('Loading model from ' + load_model_dir)
-        loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
         actor_state = loaded_state['model_actor']
         critic_state = loaded_state['model_critic']
         actor_optim_state = loaded_state['actor_optimizer']
@@ -105,12 +92,16 @@ def main(cfg: DictConfig):  # noqa: F821
         actor.load_state_dict(actor_state)
         critic.load_state_dict(critic_state)
         actor_optim.load_state_dict(actor_optim_state)
+
+        for param_group in actor_optim.param_groups:
+            cfg_optim_lr_policy = param_group['lr']
+
         critic_optim.load_state_dict(critic_optim_state)
     else:          
         collected_frames = 0
     frames_remaining = cfg.collector.total_frames - collected_frames
 
- # Create collector
+    # Create collector
     collector = SyncDataCollector(
         create_env_fn=make_environment(cfg, return_eval=False),
         policy=actor,
@@ -133,8 +124,10 @@ def main(cfg: DictConfig):  # noqa: F821
         gamma=cfg.optim.gamma,
         lmbda=cfg.optim.gae_lambda,
         value_network=critic,
-        average_gae=False,
+        average_gae=True,
     )
+    
+    os.mkdir("opus_logging")
 
     # Create logger
     exp_name = generate_exp_name("OPUS", cfg.logger.exp_name)
@@ -163,14 +156,17 @@ def main(cfg: DictConfig):  # noqa: F821
 
     #extract cfg variables
     cfg_loss_ppo_epochs = cfg.optim.ppo_epochs
-    #cfg_optim_anneal_lr = cfg.optim.anneal_lr
-    cfg_optim_lr = cfg.optim.lr
-    cfg_optim_max_grad_norm = cfg.optim.max_grad_norm
+    cfg_optim_anneal_lr = cfg.optim.anneal_lr
+    cfg_optim_lr = cfg.optim.lr_policy
     cfg_loss_anneal_clip_eps = cfg.optim.anneal_clip_epsilon
     cfg_loss_clip_epsilon = cfg.optim.clip_epsilon
     cfg_logger_test_interval = cfg.logger.test_interval
     cfg_logger_num_test_episodes = cfg.logger.num_test_episodes
+    cfg_max_grad_norm = cfg.optim.max_grad_norm
+
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
+    norms = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
+    alpha = 0.5
 
     for i, data in enumerate(collector):
         log_info = {}
@@ -205,7 +201,11 @@ def main(cfg: DictConfig):  # noqa: F821
             with torch.no_grad():
                 data = adv_module(data)
             data_reshape = data.reshape(-1)
-            
+           #alpha = 0.5
+            #for group in actor_optim.param_groups:
+            #    group["lr"] = cfg_optim_lr_policy * alpha
+            #for group in critic_optim.param_groups:
+            #    group["lr"] = cfg_optim_lr * alpha
             # Update the data buffer
             data_buffer.extend(data_reshape)
             for k, batch in enumerate(data_buffer):
@@ -225,8 +225,12 @@ def main(cfg: DictConfig):  # noqa: F821
                 # Backward pass
                 actor_loss.backward()
                 critic_loss.backward()
-                torch.nn.utils.clip_grad_norm_(actor.parameters(), cfg_optim_max_grad_norm)
-                torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg_optim_max_grad_norm)
+                actor_grad_norm = torch.nn.utils.clip_grad_norm_(actor.parameters(), cfg_max_grad_norm)
+                critic_grad_norm = torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg_max_grad_norm)
+                norms[j, k] = TensorDict({
+                    "actor_grad_norm": actor_grad_norm,
+                    "critic_grad_norm": critic_grad_norm,
+                })
                 # Update the networks
                 actor_optim.step()
                 critic_optim.step()
@@ -237,6 +241,10 @@ def main(cfg: DictConfig):  # noqa: F821
         losses_mean = losses.apply(lambda x: x.float().mean(), batch_size=[])
         for key, value in losses_mean.items():
             log_info.update({f"train/{key}": value.item()})
+        norms_mean = norms.apply(lambda x: x.float().mean(), batch_size=[])
+        for key, value in norms_mean.items():
+            log_info.update({f"train/{key}": value.item()})
+
         alpha = 1.0
         log_info.update(
             {
@@ -269,8 +277,9 @@ def main(cfg: DictConfig):  # noqa: F821
                     }
                 )
                 for key, val in test_rewards.items():
-                    log_info.update({f"eval/{key}": np.asarray(val).mean().item()})                    
+                    log_info.update({f"eval/{key}": np.asarray(val).mean().item()})
 
+                    
                 actor.train()
                 savestate = {
                         'model_actor': actor.state_dict(),
@@ -289,17 +298,8 @@ def main(cfg: DictConfig):  # noqa: F821
 
     end_time = time.time()
     execution_time = end_time - start_time
-    savestate = {
-                        'model_actor': actor.state_dict(),
-                        'model_critic': critic.state_dict(),
-                        'actor_optimizer': actor_optim.state_dict(),
-                        'critic_optimizer': critic_optim.state_dict(),
-                        "collected_frames": {"collected_frames": collected_frames}
-                }
-    torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
-    
+    print(f"Training took {execution_time:.2f} seconds to finish")
     collector.shutdown()
-
     end_time = time.time()
     execution_time = end_time - start_time
     print(f"Training took {execution_time:.2f} seconds to finish")
