@@ -49,7 +49,7 @@ optim:
   loss_critic_type: l2
   entropy_coef: 0.0
   critic_coef: 1.0
-  ppo_epochs: 5
+  ppo_epochs: 10
   anneal_lr: true
   anneal_clip_epsilon: false
 
