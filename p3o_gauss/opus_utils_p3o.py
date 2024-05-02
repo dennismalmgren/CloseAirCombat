@@ -20,7 +20,9 @@ from torchrl.envs import (
     EnvCreator,
     ParallelEnv,
     TransformedEnv,
-    RewardScaling
+    RewardScaling,
+    VecNorm,
+    ClipTransform
 )
 from torchrl.envs.libs.gym import GymEnv, set_gym_backend
 from torchrl.envs.transforms import InitTracker, RewardSum, StepCounter
@@ -40,6 +42,7 @@ from torchrl.modules import (
     ProbabilisticActor,
     TanhNormal,
     ValueOperator,
+    
 )
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
@@ -66,6 +69,8 @@ def apply_env_transforms(env):# max_episode_steps=1000):
             InitTracker(),
             StepCounter(max_steps=1000),
             DoubleToFloat(),
+            VecNorm(in_keys=["observation"], decay=0.99999, eps=1e-2),
+            ClipTransform(in_keys=["observation"], low=-10, high=10),
             RewardSum(in_keys=reward_keys,
                       reset_keys=reward_keys),
             CatFrames(5, dim=-1, in_keys=['observation'])
@@ -200,11 +205,13 @@ class SupportOperator(nn.Module):
         return (x.softmax(-1) * self.support).sum(-1, keepdim=True)
 
 
-def make_ppo_modules(cfg, proof_environment):
+def make_ppo_models_state(cfg, proof_environment):
+
+    # Define input shape
     input_shape = proof_environment.observation_spec["observation"].shape
-    action_spec = proof_environment.action_spec
+
     # Define policy output distribution class
-    #num_outputs = proof_environment.action_spec.shape[-1]
+    num_outputs = proof_environment.action_spec.shape[-1]
     distribution_class = TanhNormal
     distribution_kwargs = {
         "min": proof_environment.action_spec.space.low,
@@ -212,79 +219,64 @@ def make_ppo_modules(cfg, proof_environment):
         "tanh_loc": False,
     }
 
-    actor_net_kwargs = {
-        "in_features":input_shape[-1],
-        "num_cells": cfg.network.policy_hidden_sizes,
-        "out_features": 2 * action_spec.shape[-1],
-        "activation_class": torch.nn.ELU,
-        "activate_last_layer": True
-    }
-
     # Define policy architecture
-    actor_net = MLP(**actor_net_kwargs)
-    #actor_next_layer = nn.Linear(256, 2 * action_spec.shape[-1])
-    #actor_next_layer = torch.nn.utils.spectral_norm(actor_next_layer)
-
-    actor_extractor = NormalParamExtractor(
-        scale_mapping=f"biased_softplus_{cfg.network.default_policy_scale}",
-        scale_lb=cfg.network.scale_lb,
+    policy_mlp = MLP(
+        in_features=input_shape[-1],
+        activation_class=torch.nn.Tanh,
+        out_features=num_outputs,  # predict only loc
+        num_cells=cfg.network.policy_hidden_sizes,
     )
-    actor_net = nn.Sequential(actor_net, actor_extractor)
 
-    in_keys = ["observation"]
-    in_keys_actor = in_keys
-    actor_module = TensorDictModule(
-        actor_net,
-        in_keys=in_keys_actor,
-        out_keys=[
-            "loc",
-            "scale",
-        ],
+    # Initialize policy weights
+    for layer in policy_mlp.modules():
+        if isinstance(layer, torch.nn.Linear):
+            torch.nn.init.orthogonal_(layer.weight, 1.0)
+            layer.bias.data.zero_()
+
+    # Add state-independent normal scale
+    policy_mlp = torch.nn.Sequential(
+        policy_mlp,
+        AddStateIndependentNormalScale(
+            proof_environment.action_spec.shape[-1], scale_lb=1e-8
+        ),
     )
 
     # Add probabilistic sampling of the actions
-    actor = ProbabilisticActor(
-        spec=action_spec,
+    policy_module = ProbabilisticActor(
+        TensorDictModule(
+            module=policy_mlp,
+            in_keys=["observation"],
+            out_keys=["loc", "scale"],
+        ),
         in_keys=["loc", "scale"],
-        module=actor_module,
+        spec=CompositeSpec(action=proof_environment.action_spec),
         distribution_class=distribution_class,
-        distribution_kwargs=distribution_kwargs, 
+        distribution_kwargs=distribution_kwargs,
         return_log_prob=True,
         default_interaction_type=ExplorationType.RANDOM,
     )
-  # Define Critic Network
-    
+
     # Define value architecture
-
-    value_net_kwargs = {
-        "in_features": input_shape[-1],
-        "activation_class": torch.nn.ReLU,
-        "out_features": 1,
-        "num_cells": cfg.network.value_hidden_sizes,
-    }
-
-    value_net = MLP(
-        **value_net_kwargs,
+    value_mlp = MLP(
+        in_features=input_shape[-1],
+        activation_class=torch.nn.Tanh,
+        out_features=1,
+        num_cells=cfg.network.value_hidden_sizes,
     )
-    #last_layer = value_net[-1]
 
-   # bias_data = torch.tensor([-0.01] * (20) + [-100.0] * (nbins - (20)))
-   # last_layer.bias.data = bias_data
+    # Initialize value weights
+    for layer in value_mlp.modules():
+        if isinstance(layer, torch.nn.Linear):
+            torch.nn.init.orthogonal_(layer.weight, 0.01)
+            layer.bias.data.zero_()
 
-    in_keys = ["observation"]
-    value_module = TensorDictModule(
-        in_keys=in_keys,
-        out_keys=["state_value"],
-        module=value_net,
+    # Define value module
+    value_module = ValueOperator(
+        value_mlp,
+        in_keys=["observation"],
     )
-    #Vmin = cfg.network.vmin
-    #Vmax = cfg.network.vmax
 
-    #support = torch.linspace(Vmin, Vmax, nbins)
-    #support_network = SupportOperator(support)
-   # value_module_2 = TensorDictModule(support_network, in_keys=["state_value_logits"], out_keys=["state_value"])
-   # value_module = TensorDictSequential(value_module_1, value_module_2)
-    return actor, value_module#, support
+    return policy_module, value_module
 
 # def make_ppo_modules(cfg, proof_environment):
 #     input_shape = proof_environment.observation_spec["observation"].shape
@@ -389,7 +381,7 @@ def load_model_state(model_name, run_folder_name=""):
     return loaded_state
 
 def make_agent(cfg, eval_env, device):
-    policy_module, value_module = make_ppo_modules(
+    policy_module, value_module = make_ppo_models_state(
         cfg, eval_env
     )
     policy_module = policy_module.to(device)

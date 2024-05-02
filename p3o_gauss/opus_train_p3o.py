@@ -69,7 +69,7 @@ def main(cfg: DictConfig):  # noqa: F821
         loss_critic_type=cfg.optim.loss_critic_type,
         entropy_coef=cfg.optim.entropy_coef,
         critic_coef=cfg.optim.critic_coef,
-        normalize_advantage=False,
+        normalize_advantage=True,
         #support= support,
     )
 
@@ -124,7 +124,7 @@ def main(cfg: DictConfig):  # noqa: F821
         gamma=cfg.optim.gamma,
         lmbda=cfg.optim.gae_lambda,
         value_network=critic,
-        average_gae=True,
+        average_gae=False,
     )
     
     os.mkdir("opus_logging")
@@ -138,6 +138,7 @@ def main(cfg: DictConfig):  # noqa: F821
             logger_name="opus_logging",
             experiment_name=exp_name,
             wandb_kwargs={"mode": cfg.logger.mode,
+                          "config": dict(cfg),
                           "project": cfg.logger.project,},
         )
 

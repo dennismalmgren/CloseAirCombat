@@ -41,7 +41,7 @@ optim:
   lr_policy: 3.0e-4
   lr_q: 3.0e-4
   eps: 1.0e-5
-  weight_decay: 0.01
+  weight_decay: 0.0
   mini_batch_size: 4000
   max_grad_norm: 10.0
   gae_lambda: 0.95
