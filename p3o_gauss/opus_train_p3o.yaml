@@ -17,10 +17,10 @@ env:
 logger:
   backend: wandb
   mode: online
-  exp_name: opus_heading
-  project: opus_heading
+  exp_name: opus_smoothing
+  project: opus_smoothing
   test_interval: 48_000
-  save_interval: 1_000_000
+  save_interval: 500_000
   num_test_episodes: 5
 
 random:

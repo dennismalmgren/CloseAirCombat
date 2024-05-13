@@ -2,7 +2,7 @@ import math
 from ..core.catalog import Catalog as c
 from .curriculum_base import BaseCurriculum
 import numpy as np
-from ..tasks import OpusAltitudeTask, OpusAltitudeSpeedHeadingTask, OpusAltitudeSpeedTask
+from ..tasks import OpusAltitudeTask, OpusAltitudeSpeedHeadingTask, OpusAltitudeSpeedTask, OpusSmoothingTask
 
 class OpusCurriculum(BaseCurriculum):
     """
@@ -17,7 +17,6 @@ class OpusCurriculum(BaseCurriculum):
         self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] 
         self.heading_turn_counts = 0
         
-
     def get_init_state(self, agent_id):
         #hack. we know it's only one agent for now..
         return self.agent_init_states[agent_id]
@@ -59,7 +58,8 @@ class OpusCurriculum(BaseCurriculum):
 
     def load_task(self):
         #taskname = getattr(self.config, 'task', None)
-        self.task = OpusAltitudeSpeedHeadingTask(self.config)
+        #self.task = OpusAltitudeSpeedHeadingTask(self.config)
+        self.task = OpusSmoothingTask(self.config)
         #self.task = OpusAltitudeTask(self.config)
         return self.task
     
