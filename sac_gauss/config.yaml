@@ -4,7 +4,7 @@ env:
   task: ""
   library: gymnasium
   max_episode_steps: 1000
-  seed: 2
+  seed: 19
 
 # collector
 collector:
@@ -25,12 +25,12 @@ replay_buffer:
 # optim
 optim:
   utd_ratio: 1.0
-  gamma: 0.99
+  gamma: 0.995
   loss_function: l2
   lr_policy: 3.0e-4
-  lr_q: 3e-4
+  lr_q: 1e-3
   weight_decay: 0.0
-  batch_size: 256
+  batch_size: 512
   target_update_polyak: 0.995
   alpha_init: 1.0
   adam_eps: 1.0e-8
@@ -44,7 +44,12 @@ network:
   default_policy_scale: 1.0
   scale_lb: 0.1
   device: "cuda:0"
-
+  nbins: 101
+  q_min: -100
+  q_max: 1000
+  v_min: -200
+  v_max: 1100
+  
 # logging
 logger:
   backend: wandb

@@ -20,7 +20,9 @@ from torchrl.envs import (
     EnvCreator,
     ParallelEnv,
     TransformedEnv,
-    RewardScaling
+    RewardScaling,
+    VecNorm,
+    ClipTransform
 )
 from torchrl.envs.libs.gym import GymEnv, set_gym_backend
 from torchrl.envs.transforms import InitTracker, RewardSum, StepCounter
@@ -31,6 +33,7 @@ from torchrl.objectives import SoftUpdate
 from torchrl.objectives.sac import SACLoss
 from torchrl.data import CompositeSpec
 from tensordict.nn import AddStateIndependentNormalScale
+import torch.nn.functional as F
 
 from torchrl.modules import (
     ActorValueOperator,
@@ -40,6 +43,7 @@ from torchrl.modules import (
     TanhNormal,
     ValueOperator,
 )
+from tensordict import TensorDict
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
@@ -65,6 +69,8 @@ def apply_env_transforms(env):# max_episode_steps=1000):
             InitTracker(),
             StepCounter(max_steps=1000),
             DoubleToFloat(),
+            VecNorm(in_keys=["observation"], decay=0.99999, eps=1e-2),
+            ClipTransform(in_keys=["observation"], low=-10, high=10),
             RewardSum(in_keys=reward_keys,
                       reset_keys=reward_keys),
             CatFrames(5, dim=-1, in_keys=['observation'])
@@ -190,9 +196,28 @@ def make_replay_buffer(
 # ====================================================================
 # Model
 # -----
-def make_ppo_modules(cfg, proof_environment):
+class SupportOperator(nn.Module):
+    def __init__(self, support):
+        super().__init__()
+        self.register_buffer("support", support)
+
+    def forward(self, x):
+        return (x.softmax(-1) * self.support).sum(-1, keepdim=True)
+
+class ClampOperator(nn.Module):
+    def __init__(self, vmin, vmax):
+        super().__init__()
+        self.vmin = vmin
+        self.vmax = vmax
+
+    def forward(self, x):
+        return torch.clamp(x, self.vmin, self.vmax)
+    
+def make_ppo_models_state(cfg, proof_environment):
+
+    # Define input shape
     input_shape = proof_environment.observation_spec["observation"].shape
-    action_spec = proof_environment.action_spec
+
     # Define policy output distribution class
     num_outputs = proof_environment.action_spec.shape[-1]
     distribution_class = TanhNormal
@@ -202,104 +227,230 @@ def make_ppo_modules(cfg, proof_environment):
         "tanh_loc": False,
     }
 
-    actor_net_kwargs = {
-        "in_features":input_shape[-1],
-        "num_cells": cfg.network.hidden_sizes,
-        "out_features": 2 * action_spec.shape[-1],
-        "activation_class": torch.nn.ReLU,
-    }
-
     # Define policy architecture
-    actor_net = MLP(**actor_net_kwargs)
-
-    actor_extractor = NormalParamExtractor(
-        scale_mapping=f"biased_softplus_{cfg.network.default_policy_scale}",
-        scale_lb=cfg.network.scale_lb,
+    policy_mlp = MLP(
+        in_features=input_shape[-1],
+        activation_class=torch.nn.Tanh,
+        out_features=num_outputs,  # predict only loc
+        num_cells=cfg.network.policy_hidden_sizes,
+        norm_class=torch.nn.LayerNorm,
+        norm_kwargs=[{"elementwise_affine": False,
+                     "normalized_shape": hidden_size} for hidden_size in cfg.network.policy_hidden_sizes],
     )
-    actor_net = nn.Sequential(actor_net, actor_extractor)
 
-    in_keys = ["observation"]
-    in_keys_actor = in_keys
-    actor_module = TensorDictModule(
-        actor_net,
-        in_keys=in_keys_actor,
-        out_keys=[
-            "loc",
-            "scale",
-        ],
+    
+    # Initialize policy weights
+    for layer in policy_mlp.modules():
+        if isinstance(layer, torch.nn.Linear):
+            torch.nn.init.orthogonal_(layer.weight, 1.0)
+            layer.bias.data.zero_()
+
+    clamp_operator = ClampOperator(-10, 10)
+
+    # Add state-independent normal scale
+    policy_mlp = torch.nn.Sequential(
+        policy_mlp,
+        clamp_operator,
+        AddStateIndependentNormalScale(
+            proof_environment.action_spec.shape[-1], scale_lb=1e-8
+        ),
     )
 
     # Add probabilistic sampling of the actions
-    actor = ProbabilisticActor(
-        spec=action_spec,
+    policy_module = ProbabilisticActor(
+        TensorDictModule(
+            module=policy_mlp,
+            in_keys=["observation"],
+            out_keys=["loc", "scale"],
+        ),
         in_keys=["loc", "scale"],
-        module=actor_module,
+        spec=CompositeSpec(action=proof_environment.action_spec),
         distribution_class=distribution_class,
-        distribution_kwargs=distribution_kwargs, 
+        distribution_kwargs=distribution_kwargs,
         return_log_prob=True,
         default_interaction_type=ExplorationType.RANDOM,
     )
-  # Define Critic Network
-    
-    nbins = 51
-    qvalue_net_kwargs = {
-        "num_cells": cfg.network.hidden_sizes,
-        "out_features": nbins,
-        "activation_class": torch.nn.ReLU,
-    }
-    qvalue_net = MLP(
-        **qvalue_net_kwargs,
-    )
-
-    qvalue1 = TensorDictModule(
-        in_keys=["action"] + in_keys,
-        out_keys=["state_action_value"],
-        module=qvalue_net,
-    )
-
-    qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"])
-    qvalue = TensorDictSequential(qvalue1, qvalue2)
 
     # Define value architecture
-    nbins = 51
+    nbins = cfg.network.nbins
+    Vmin = cfg.network.vmin
+    Vmax = cfg.network.vmax
+
+    support = torch.linspace(Vmin, Vmax, nbins)
+
     value_net_kwargs = {
         "in_features": input_shape[-1],
         "activation_class": torch.nn.ReLU,
         "out_features": nbins,
-        "num_cells": cfg.network.hidden_sizes,
+        "num_cells": cfg.network.value_hidden_sizes,
     }
 
     value_net = MLP(
         **value_net_kwargs,
     )
-    
+    last_layer = value_net[-1]
+
+    bias_data = torch.tensor([-0.01] * (20) + [-100.0] * (nbins - (20)))
+    last_layer.bias.data = bias_data
+
     in_keys = ["observation"]
-    value1 = TensorDictModule(
+    value_module_1 = TensorDictModule(
         in_keys=in_keys,
-        out_keys=["state_value"],
+        out_keys=["state_value_logits"],
         module=value_net,
     )
-    value2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_value"], ["state_value"])
-    
-    value_module = TensorDictSequential(value1, value2)
-    
-    Vmin = -10
-    Vmax = 200
-    #N_bins = nbins - 6
-    #delta = (Vmax - Vmin) / (nbins - 1)
-#    Vmin_final = Vmin - 3 * delta
-#    Vmax_final = Vmax + 3 * delta
-    support = torch.linspace(Vmin, Vmax, nbins)
+    support_network = SupportOperator(support)
+    value_module_2 = TensorDictModule(support_network, in_keys=["state_value_logits"], out_keys=["state_value"])
+    value_module = TensorDictSequential(value_module_1, value_module_2)
 
+#### OLD VALUE MODULE
+    # value_mlp = MLP(
+    #     in_features=input_shape[-1],
+    #     activation_class=torch.nn.Tanh,
+    #     out_features=1,
+    #     num_cells=cfg.network.value_hidden_sizes,
+    # )
+
+    # # Initialize value weights
+    # for layer in value_mlp.modules():
+    #     if isinstance(layer, torch.nn.Linear):
+    #         torch.nn.init.orthogonal_(layer.weight, 0.01)
+    #         layer.bias.data.zero_()
+
+    # # Define value module
+    # value_module = ValueOperator(
+    #     value_mlp,
+    #     in_keys=["observation"],
+    # )
+    
+#### END OLD VALUE MODULE
     return policy_module, value_module, support
 
+# def make_ppo_modules(cfg, proof_environment):
+#     input_shape = proof_environment.observation_spec["observation"].shape
+#     action_spec = proof_environment.action_spec
+#     # Define policy output distribution class
+#     #num_outputs = proof_environment.action_spec.shape[-1]
+#     distribution_class = TanhNormal
+#     distribution_kwargs = {
+#         "min": proof_environment.action_spec.space.low,
+#         "max": proof_environment.action_spec.space.high,
+#         "tanh_loc": False,
+#     }
+
+#     actor_net_kwargs = {
+#         "in_features":input_shape[-1],
+#         "num_cells": cfg.network.policy_hidden_sizes,
+#         "out_features": 2 * action_spec.shape[-1],
+#         "activation_class": torch.nn.ELU,
+#         "activate_last_layer": True
+#     }
+
+#     # Define policy architecture
+#     actor_net = MLP(**actor_net_kwargs)
+#     #actor_next_layer = nn.Linear(256, 2 * action_spec.shape[-1])
+#     #actor_next_layer = torch.nn.utils.spectral_norm(actor_next_layer)
+
+#     actor_extractor = NormalParamExtractor(
+#         scale_mapping=f"biased_softplus_{cfg.network.default_policy_scale}",
+#         scale_lb=cfg.network.scale_lb,
+#     )
+#     actor_net = nn.Sequential(actor_net, actor_extractor)
+
+#     in_keys = ["observation"]
+#     in_keys_actor = in_keys
+#     actor_module = TensorDictModule(
+#         actor_net,
+#         in_keys=in_keys_actor,
+#         out_keys=[
+#             "loc",
+#             "scale",
+#         ],
+#     )
+
+#     # Add probabilistic sampling of the actions
+#     actor = ProbabilisticActor(
+#         spec=action_spec,
+#         in_keys=["loc", "scale"],
+#         module=actor_module,
+#         distribution_class=distribution_class,
+#         distribution_kwargs=distribution_kwargs, 
+#         return_log_prob=True,
+#         default_interaction_type=ExplorationType.RANDOM,
+#     )
+#   # Define Critic Network
+    
+#     # Define value architecture
+#     nbins = cfg.network.nbins
+
+#     value_net_kwargs = {
+#         "in_features": input_shape[-1],
+#         "activation_class": torch.nn.ReLU,
+#         "out_features": nbins,
+#         "num_cells": cfg.network.value_hidden_sizes,
+#     }
+
+#     value_net = MLP(
+#         **value_net_kwargs,
+#     )
+#     last_layer = value_net[-1]
+
+#     bias_data = torch.tensor([-0.01] * (20) + [-100.0] * (nbins - (20)))
+#     last_layer.bias.data = bias_data
+
+#     in_keys = ["observation"]
+#     value_module_1 = TensorDictModule(
+#         in_keys=in_keys,
+#         out_keys=["state_value_logits"],
+#         module=value_net,
+#     )
+#     Vmin = cfg.network.vmin
+#     Vmax = cfg.network.vmax
+
+#     support = torch.linspace(Vmin, Vmax, nbins)
+#     support_network = SupportOperator(support)
+#     value_module_2 = TensorDictModule(support_network, in_keys=["state_value_logits"], out_keys=["state_value"])
+#     value_module = TensorDictSequential(value_module_1, value_module_2)
+#     return actor, value_module, support
+
+def load_observation_statistics(statistics_file, run_folder_name=""):
+    #debug outputs is at the root.
+    #commandline outputs is at scripts/patrol/outputs
+    load_from_saved_models = run_folder_name == ""
+    if load_from_saved_models:
+        outputs_folder = "../../../saved_models/"
+    else:
+        outputs_folder = "../../"
+
+    model_load_filename = f"{statistics_file}.td"
+    load_model_dir = outputs_folder + run_folder_name
+    print('Loading statistics from ' + load_model_dir)
+    loaded_state = TensorDict.load_memmap(load_model_dir + f"{model_load_filename}")
+    return loaded_state
+
+def load_model_state(model_name, run_folder_name=""):
+    #debug outputs is at the root.
+    #commandline outputs is at scripts/patrol/outputs
+    load_from_saved_models = run_folder_name == ""
+    if load_from_saved_models:
+        outputs_folder = "../../../saved_models/"
+    else:
+        outputs_folder = "../../"
+
+    model_load_filename = f"{model_name}.pt"
+    load_model_dir = outputs_folder + run_folder_name
+    print('Loading model from ' + load_model_dir)
+    loaded_state = torch.load(load_model_dir + f"{model_load_filename}")
+    return loaded_state
+
 def make_agent(cfg, eval_env, device):
-    policy_module, value_module, support = make_ppo_modules(
+    policy_module, value_module, support = make_ppo_models_state(
         cfg, eval_env
     )
+    support = support.to(device)
     policy_module = policy_module.to(device)
     value_module = value_module.to(device)
-    support = support.to(device)
+
     with torch.no_grad():
         td = eval_env.reset()
         td = td.to(device)
@@ -308,6 +459,22 @@ def make_agent(cfg, eval_env, device):
         td = td.to("cpu")
 
     return policy_module, value_module, support
+
+# def make_agent(cfg, eval_env, device):
+#     policy_module, value_module, support = make_ppo_modules(
+#         cfg, eval_env
+#     )
+#     policy_module = policy_module.to(device)
+#     value_module = value_module.to(device)
+#     support = support.to(device)
+#     with torch.no_grad():
+#         td = eval_env.reset()
+#         td = td.to(device)
+#         td = policy_module(td)
+#         td = value_module(td)
+#         td = td.to("cpu")
+
+#     return policy_module, value_module, support
 
 def eval_model(actor, test_env, reward_keys, num_episodes=3):
     test_rewards = dict()
@@ -333,107 +500,6 @@ def eval_model(actor, test_env, reward_keys, num_episodes=3):
     del td_test
     return test_rewards, torch.cat(test_lengths, 0).mean()
 
-def make_sac_agent(cfg, train_env, eval_env, device):
-    """Make SAC agent."""
-    # Define Actor Network
-    in_keys = ["observation"]
-    action_spec = train_env.action_spec
-    if train_env.batch_size:
-        action_spec = action_spec[(0,) * len(train_env.batch_size)]
-    actor_net_kwargs = {
-        "num_cells": cfg.network.hidden_sizes,
-        "out_features": 2 * action_spec.shape[-1],
-        "activation_class": get_activation(cfg),
-    }
-
-    actor_net = MLP(**actor_net_kwargs)
-
-    dist_class = TanhNormal
-    dist_kwargs = {
-        "min": action_spec.space.low,
-        "max": action_spec.space.high,
-        "tanh_loc": False,
-    }
-
-    actor_extractor = NormalParamExtractor(
-        scale_mapping=f"biased_softplus_{cfg.network.default_policy_scale}",
-        scale_lb=cfg.network.scale_lb,
-    )
-    actor_net = nn.Sequential(actor_net, actor_extractor)
-
-    in_keys_actor = in_keys
-    actor_module = TensorDictModule(
-        actor_net,
-        in_keys=in_keys_actor,
-        out_keys=[
-            "loc",
-            "scale",
-        ],
-    )
-    actor = ProbabilisticActor(
-        spec=action_spec,
-        in_keys=["loc", "scale"],
-        module=actor_module,
-        distribution_class=dist_class,
-        distribution_kwargs=dist_kwargs,
-        default_interaction_type=InteractionType.RANDOM,
-        return_log_prob=False,
-    )
-
-    # Define Critic Network
-    qvalue_net_kwargs = {
-        "num_cells": cfg.network.hidden_sizes,
-        "out_features": 1,
-        "activation_class": get_activation(cfg),
-    }
-
-    qvalue_net = MLP(
-        **qvalue_net_kwargs,
-    )
-
-    qvalue = ValueOperator(
-        in_keys=["action"] + in_keys,
-        module=qvalue_net,
-    )
-
-    model = nn.ModuleList([actor, qvalue]).to(device)
-
-    # init nets
-    with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM):
-        td = eval_env.reset()
-        td = td.to(device)
-        for net in model:
-            net(td)
-    del td
-    eval_env.close()
-
-    return model, model[0]
-
-
-# ====================================================================
-# SAC Loss
-# ---------
-
-
-def make_loss_module(cfg, model):
-    """Make loss module and target network updater."""
-    # Create SAC loss
-    loss_module = SACLoss(
-        actor_network=model[0],
-        qvalue_network=model[1],
-        num_qvalue_nets=2,
-        loss_function=cfg.optim.loss_function,
-        delay_actor=False,
-        delay_qvalue=True,
-        alpha_init=cfg.optim.alpha_init,
-    )
-    loss_module.make_value_estimator(gamma=cfg.optim.gamma)
-
-    # Define Target Network Updater
-    target_net_updater = SoftUpdate(loss_module, eps=cfg.optim.target_update_polyak)
-    return loss_module, target_net_updater
-
-
 def split_critic_params(critic_params):
     critic1_params = []
     critic2_params = []
@@ -444,28 +510,6 @@ def split_critic_params(critic_params):
         critic2_params.append(nn.Parameter(data2))
     return critic1_params, critic2_params
 
-
-def make_sac_optimizer(cfg, loss_module):
-    critic_params = list(loss_module.qvalue_network_params.flatten_keys().values())
-    actor_params = list(loss_module.actor_network_params.flatten_keys().values())
-
-    optimizer_actor = optim.Adam(
-        actor_params,
-        lr=cfg.optim.lr,
-        weight_decay=cfg.optim.weight_decay,
-        eps=cfg.optim.adam_eps,
-    )
-    optimizer_critic = optim.Adam(
-        critic_params,
-        lr=cfg.optim.lr,
-        weight_decay=cfg.optim.weight_decay,
-        eps=cfg.optim.adam_eps,
-    )
-    optimizer_alpha = optim.Adam(
-        [loss_module.log_alpha],
-        lr=3.0e-4,
-    )
-    return optimizer_actor, optimizer_critic, optimizer_alpha
 
 
 # ====================================================================

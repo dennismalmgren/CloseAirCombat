@@ -280,6 +280,8 @@ class BaseEnv(gym.Env):
             data = np.concatenate((ego_data, enm_data))  # type: np.ndarray
         else:
             data = ego_data  # type: np.ndarray
+            if not np.isnan(data).sum() == 0:
+                print('nan in data')
         try:
             assert np.isnan(data).sum() == 0
         except AssertionError:

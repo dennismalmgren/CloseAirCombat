@@ -6,7 +6,7 @@ hydra:
 env:
   name: opus/opus_training
   task: "" #this is the task.
-  exp_name:P3O_OPUS
+  exp_name: P3O_OPUS
   max_episode_steps: 1000
   seed: 55
   reward_scaling: 0.01
@@ -17,9 +17,10 @@ env:
 logger:
   backend: wandb
   mode: online
-  exp_name: opus_heading
-  project: opus_heading
-  test_interval: 1_000
+  exp_name: opus_smoothing
+  project: opus_smoothing
+  test_interval: 48_000
+  save_interval: 500_000
   num_test_episodes: 5
 
 random:
@@ -38,33 +39,39 @@ optim:
   utd_ratio: 1.0
   gamma: 0.99
   loss_function: l2
-  lr: 3.0e-4
-  weight_decay: 0.0
-  mini_batch_size: 16000
+  lr_policy: 3.0e-4
+  lr_q: 3.0e-4
+  eps: 1.0e-4
+  weight_decay: 0.00001
+  mini_batch_size: 4000
   max_grad_norm: 10.0
   gae_lambda: 0.95
   clip_epsilon: 0.2
   loss_critic_type: l2
   entropy_coef: 0.0
   critic_coef: 1.0
-  ppo_epochs: 20
-  anneal_lr: true
+  ppo_epochs: 10
+  anneal_lr: false
   anneal_clip_epsilon: false
-
 
 # collector
 collector:
-  total_frames: 20_000_000
-  frames_per_batch: 1000 #max_episode_steps * env_per_collector
+  total_frames: 48_000_000
+  frames_per_batch: 16000 #max_episode_steps * env_per_collector
   device: cpu
-  env_per_collector: 1
+  env_per_collector: 16
 
 network:
-  hidden_sizes: [256, 256]
+  policy_hidden_sizes: [256, 256]
+  value_hidden_sizes: [2048, 2048]
   activation: "relu"
   default_policy_scale: 1.0
   scale_lb: 0.1
   device: "cuda:0"
+  nbins: 101
+  vmin: -10
+  vmax: 200
+
 
 # replay buffer
 replay_buffer:

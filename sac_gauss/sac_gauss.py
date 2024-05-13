@@ -11,7 +11,7 @@ It supports state environments like MuJoCo.
 The helper functions are coded in the utils.py associated with this script.
 """
 import time
-
+import os
 import hydra
 
 import numpy as np
@@ -40,7 +40,7 @@ from .utils import (
 @hydra.main(version_base="1.1", config_path="", config_name="config")
 def main(cfg: "DictConfig"):  # noqa: F821
     device = torch.device(cfg.network.device)
-
+    os.mkdir("sac_logging")
     # Create logger
     exp_name = generate_exp_name("SAC", cfg.logger.exp_name)
     logger = None

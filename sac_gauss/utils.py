@@ -198,11 +198,11 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     # Define Critic Network
     #lets assume we have 3 outputs.
     
-    K = 51
-    Qmin = -100
-    Qmax = 500
-    Vmin = -100
-    Vmax = 14000
+    K = cfg.network.nbins
+    Qmin = cfg.network.q_min
+    Qmax = cfg.network.q_max
+    Vmin = cfg.network.v_min
+    Vmax = cfg.network.v_max
     #N_bins = nbins - 6
     delta = (Qmax - Qmin) / (K - 1)
     nbins = math.ceil((Vmax - Vmin) // delta)
@@ -223,10 +223,12 @@ def make_sac_agent(cfg, train_env, eval_env, device):
         module=qvalue_net,
     )
 
-    qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"])
+    #qvalue2 = TensorDictModule(lambda x: x.log_softmax(-1), ["state_action_value"], ["state_action_value"]) 
+    #we were supposed to remove this in favor of softmaxing later?
     #qvalue2 = TensorDictModule(lambda x: x, ["state_action_value"], ["state_action_value"])
 
-    qvalue = TensorDictSequential(qvalue1, qvalue2)
+    #qvalue = TensorDictSequential(qvalue1, qvalue2)
+    qvalue = qvalue1
 
 
 #    K = math.ceil((Qmax - Q_min) / delta)
@@ -236,7 +238,7 @@ def make_sac_agent(cfg, train_env, eval_env, device):
     support = torch.linspace(Vmin, Vmax, nbins).to(device)
     last_layer = qvalue_net[-1]
     #bias_data = torch.tensor([-0.01] * (K // 2) + [-100.0] * (nbins - (K // 2)))
-    bias_data = torch.tensor([-0.01] * (20) + [-100.0] * (nbins - (20)))
+    bias_data = torch.tensor([-0.01] * (K // 2) + [-100.0] * (nbins - (K // 2)))
     #bias_data = bias_data / torch.sum(bias_data)
     last_layer.bias.data = bias_data
     

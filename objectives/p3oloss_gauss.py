@@ -26,7 +26,7 @@ from torchrl.objectives.utils import (
 from torchrl.objectives.common import LossModule
 from torchrl.objectives.value import GAE, TD0Estimator, TD1Estimator, TDLambdaEstimator, VTrace
 from torchrl.objectives.ppo import PPOLoss
-
+from torchrl.objectives.utils import _clip_value_loss
 
 class P3OLossGauss(PPOLoss):
     """Clipped PPO loss.
@@ -135,7 +135,7 @@ class P3OLossGauss(PPOLoss):
         support: torch.Tensor = None,
         **kwargs,
     ):
-        super(self).__init__(
+        super().__init__(
             actor_network,
             critic_network,
             entropy_bonus=entropy_bonus,
@@ -182,7 +182,18 @@ class P3OLossGauss(PPOLoss):
     def out_keys(self, values):
         self._out_keys = values
 
-
+    def construct_gauss_dist(self, loc):
+        loc = loc.clamp(self.support.min(), self.support.max())
+        stddev_expanded = self.stddev.expand_as(loc)
+        dist = torch.distributions.Normal(loc, stddev_expanded)
+        cdf_plus = dist.cdf(self.support_plus)
+        cdf_minus = dist.cdf(self.support_minus)
+        m = cdf_plus - cdf_minus
+            #m[..., 0] = cdf_plus[..., 0]
+            #m[..., -1] = 1 - cdf_minus[..., -1]
+        m = m / m.sum(dim=-1, keepdim=True)  #this should be handled differently. check the paper
+        return m
+    
     @dispatch
     def forward(self, tensordict: TensorDictBase) -> TensorDictBase:
         tensordict_copy = tensordict.clone(False)
@@ -234,3 +245,59 @@ class P3OLossGauss(PPOLoss):
             loss_critic = self.loss_critic(tensordict)[0]
             td_out.set("loss_critic", loss_critic.mean())
         return td_out
+    
+    def loss_critic(self, tensordict: TensorDictBase) -> torch.Tensor:
+        # TODO: if the advantage is gathered by forward, this introduces an
+        # overhead that we could easily reduce.
+        if self.separate_losses:
+            tensordict = tensordict.detach()
+        try:
+            target_return = tensordict.get(self.tensor_keys.value_target)
+        except KeyError:
+            raise KeyError(
+                f"the key {self.tensor_keys.value_target} was not found in the input tensordict. "
+                f"Make sure you provided the right key and the value_target (i.e. the target "
+                f"return) has been retrieved accordingly. Advantage classes such as GAE, "
+                f"TDLambdaEstimate and TDEstimate all return a 'value_target' entry that "
+                f"can be used for the value loss."
+            )
+
+        if self.clip_value:
+            try:
+                old_state_value = tensordict.get(self.tensor_keys.value)
+            except KeyError:
+                raise KeyError(
+                    f"clip_value is set to {self.clip_value}, but "
+                    f"the key {self.tensor_keys.value} was not found in the input tensordict. "
+                    f"Make sure that the value_key passed to PPO exists in the input tensordict."
+                )
+
+        with self.critic_network_params.to_module(
+            self.critic_network
+        ) if self.functional else contextlib.nullcontext():
+            state_value_td = self.critic_network(tensordict)
+
+        try:
+            state_value = state_value_td.get(self.tensor_keys.value)
+            state_value_logits = state_value_td.get("state_value_logits")
+        except KeyError:
+            raise KeyError(
+                f"the key {self.tensor_keys.value} was not found in the critic output tensordict. "
+                f"Make sure that the value_key passed to PPO is accurate."
+            )
+        #target_return = target_return.expand_as(state_value[0])
+        target_return_logits = self.construct_gauss_dist(target_return)
+        loss_value = torch.nn.functional.cross_entropy(state_value_logits, target_return_logits, reduction="none")
+    
+        clip_fraction = None
+        if self.clip_value:
+            loss_value, clip_fraction = _clip_value_loss(
+                old_state_value,
+                state_value,
+                self.clip_value.to(state_value.device),
+                target_return,
+                loss_value,
+                self.loss_critic_type,
+            )
+
+        return self.critic_coef * loss_value, clip_fraction

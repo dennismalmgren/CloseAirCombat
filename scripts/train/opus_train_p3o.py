@@ -269,9 +269,7 @@ def main(cfg: DictConfig):  # noqa: F821
                     }
                 )
                 for key, val in test_rewards.items():
-                    log_info.update({f"eval/{key}": np.asarray(val).mean().item()})
-
-                    
+                    log_info.update({f"eval/{key}": np.asarray(val).mean().item()})                    
 
                 actor.train()
                 savestate = {
