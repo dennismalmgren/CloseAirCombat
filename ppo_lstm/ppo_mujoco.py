@@ -93,6 +93,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             experiment_name=exp_name,
             wandb_kwargs={
                 "config": dict(cfg),
+                "mode": cfg.logger.mode,
                 "project": cfg.logger.project_name,
                 "group": cfg.logger.group_name,
             },

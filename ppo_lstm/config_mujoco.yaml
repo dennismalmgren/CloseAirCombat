@@ -10,6 +10,7 @@ collector:
 # logger
 logger:
   backend: wandb
+  mode: disabled
   project_name: torchrl_example_ppo
   group_name: null
   exp_name: Mujoco_Schulman17
