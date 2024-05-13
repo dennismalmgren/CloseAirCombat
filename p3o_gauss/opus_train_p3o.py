@@ -37,7 +37,8 @@ from .opus_utils_p3o import (
     make_environment,
     make_agent,
     eval_model,
-    load_model_state
+    load_model_state,
+    load_observation_statistics
 )
 
 @hydra.main(version_base="1.1", config_path=".", config_name="opus_train_p3o")
@@ -57,12 +58,12 @@ def main(cfg: DictConfig):  # noqa: F821
     train_env, eval_env = make_environment(cfg)
     reward_keys = list(train_env.reward_spec.keys())
     # Create agent
-    policy_module, value_module = make_agent(cfg, eval_env, device)
+    policy_module, value_module, support = make_agent(cfg, eval_env, device)
     actor = policy_module
     critic = value_module
 
    
-    loss_module = ClipPPOLoss(
+    loss_module = ClipPPOLossGauss(
         actor_network=actor,
         critic_network=critic,
         clip_epsilon=cfg.optim.clip_epsilon,
@@ -70,19 +71,21 @@ def main(cfg: DictConfig):  # noqa: F821
         entropy_coef=cfg.optim.entropy_coef,
         critic_coef=cfg.optim.critic_coef,
         normalize_advantage=True,
-        #support= support,
+        support= support,
     )
 
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr_policy, eps=cfg.optim.eps)
+    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr_policy, eps=cfg.optim.eps, weight_decay=cfg.optim.weight_decay)
     critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr_q, eps=cfg.optim.eps)
 
-    cfg_optim_policy_lr = cfg.optim.lr_policy
+    #cfg_optim_policy_lr = cfg.optim.lr_policy
     #cfg_optim_q_lr = cfg.optim.lr_q
     load_model = False
     #commandline outputs is at scripts/patrol/outputs
     if load_model:
-        model_dir="2024-04-29/19-25-53/"
-        loaded_state = load_model_state("training_snapshot_22384000", model_dir)
+        model_dir="2024-05-06/15-55-55/"
+        model_name = "training_snapshot_16000"
+        observation_statistics_name = "observation_statistics_16000"
+        loaded_state = load_model_state(model_name, model_dir)
 
         actor_state = loaded_state['model_actor']
         critic_state = loaded_state['model_critic']
@@ -92,13 +95,12 @@ def main(cfg: DictConfig):  # noqa: F821
         actor.load_state_dict(actor_state)
         critic.load_state_dict(critic_state)
         actor_optim.load_state_dict(actor_optim_state)
-
-        for param_group in actor_optim.param_groups:
-            cfg_optim_lr_policy = param_group['lr']
-
         critic_optim.load_state_dict(critic_optim_state)
+        observation_statistics = load_observation_statistics(observation_statistics_name, model_dir)
+
     else:          
         collected_frames = 0
+        observation_statistics = None
     frames_remaining = cfg.collector.total_frames - collected_frames
 
     # Create collector
@@ -111,6 +113,9 @@ def main(cfg: DictConfig):  # noqa: F821
         storing_device=device,
         max_frames_per_traj=-1,
     )
+
+    if observation_statistics is not None:
+        collector.env.transform[3]._td = observation_statistics.to(device)
 
     # Create data buffer
     sampler = SamplerWithoutReplacement()
@@ -162,6 +167,7 @@ def main(cfg: DictConfig):  # noqa: F821
     cfg_loss_anneal_clip_eps = cfg.optim.anneal_clip_epsilon
     cfg_loss_clip_epsilon = cfg.optim.clip_epsilon
     cfg_logger_test_interval = cfg.logger.test_interval
+    cfg_logger_save_interval = cfg.logger.save_interval
     cfg_logger_num_test_episodes = cfg.logger.num_test_episodes
     cfg_max_grad_norm = cfg.optim.max_grad_norm
 
@@ -212,6 +218,13 @@ def main(cfg: DictConfig):  # noqa: F821
             for k, batch in enumerate(data_buffer):
                 # Get a data batch
                 batch = batch.to(device)
+                alpha = 1.0
+                if cfg_optim_anneal_lr:
+                    alpha = 1 - (num_network_updates / total_network_updates)
+                    for group in actor_optim.param_groups:
+                        group["lr"] = cfg_optim_lr * alpha
+                    for group in critic_optim.param_groups:
+                        group["lr"] = cfg_optim_lr * alpha
 
                 #TODO: Add annealing
                 num_network_updates += 1
@@ -246,7 +259,6 @@ def main(cfg: DictConfig):  # noqa: F821
         for key, value in norms_mean.items():
             log_info.update({f"train/{key}": value.item()})
 
-        alpha = 1.0
         log_info.update(
             {
                 "train/lr": alpha * cfg_optim_lr,
@@ -264,6 +276,7 @@ def main(cfg: DictConfig):  # noqa: F821
                 i * frames_in_batch
             ) // cfg_logger_test_interval:
                 actor.eval()
+                eval_env.transform[3]._td = collector.env.transform[3]._td.clone().to('cpu') #hack!
                 eval_start = time.time()
                 test_rewards, test_lengths = eval_model(
                     actor, eval_env, reward_keys, num_episodes=cfg_logger_num_test_episodes
@@ -282,14 +295,21 @@ def main(cfg: DictConfig):  # noqa: F821
 
                     
                 actor.train()
+            if ((i - 1) * frames_in_batch) // cfg_logger_save_interval < (
+                i * frames_in_batch
+            ) // cfg_logger_save_interval:
                 savestate = {
                         'model_actor': actor.state_dict(),
                         'model_critic': critic.state_dict(),
                         'actor_optimizer': actor_optim.state_dict(),
                         'critic_optimizer': critic_optim.state_dict(),
-                        "collected_frames": {"collected_frames": collected_frames}
+                        "collected_frames": {"collected_frames": collected_frames},
                 }
                 torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
+                collector.env.transform[3]._td.clone().to('cpu').memmap(f"observation_statistics_{collected_frames}.td")
+
+                #                        "observation_statistics": collector.env.transform[3]._td.clone().to('cpu').to_state_dict()
+
         if logger:
             for key, value in log_info.items():
                 logger.log_scalar(key, value, collected_frames)

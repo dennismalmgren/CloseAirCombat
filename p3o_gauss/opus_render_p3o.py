@@ -33,6 +33,7 @@ from .opus_utils_p3o import (
     make_agent,
     eval_model,
     load_model_state,
+    load_observation_statistics
 )
 
 @hydra.main(version_base="1.1", config_path=".", config_name="opus_train_p3o")
@@ -54,13 +55,16 @@ def main(cfg: DictConfig):  # noqa: F821
 
     load_model = True
     if load_model:
-        model_dir="2024-04-29/07-24-45/"
-        loaded_state = load_model_state("training_snapshot_21776000", model_dir)
+        model_dir="2024-05-12/12-44-56/"
+        model_name = "training_snapshot_40016000"
+        observation_statistics_name = "observation_statistics_40016000"
+        loaded_state = load_model_state(model_name, model_dir)
         actor_state = loaded_state['model_actor']
         critic_state = loaded_state['model_critic']
         actor.load_state_dict(actor_state)
         critic.load_state_dict(critic_state)
-
+        observation_statistics = load_observation_statistics(observation_statistics_name, model_dir)
+        eval_env.transform[3]._td = observation_statistics.to(device)
     exp_name = generate_exp_name("OPUS_Render", cfg.logger.exp_name)
     os.mkdir('runs')
     run_dir = 'runs'

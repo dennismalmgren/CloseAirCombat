@@ -42,8 +42,8 @@ from torchrl.modules import (
     ProbabilisticActor,
     TanhNormal,
     ValueOperator,
-    
 )
+from tensordict import TensorDict
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
@@ -204,7 +204,15 @@ class SupportOperator(nn.Module):
     def forward(self, x):
         return (x.softmax(-1) * self.support).sum(-1, keepdim=True)
 
+class ClampOperator(nn.Module):
+    def __init__(self, vmin, vmax):
+        super().__init__()
+        self.vmin = vmin
+        self.vmax = vmax
 
+    def forward(self, x):
+        return torch.clamp(x, self.vmin, self.vmax)
+    
 def make_ppo_models_state(cfg, proof_environment):
 
     # Define input shape
@@ -225,17 +233,24 @@ def make_ppo_models_state(cfg, proof_environment):
         activation_class=torch.nn.Tanh,
         out_features=num_outputs,  # predict only loc
         num_cells=cfg.network.policy_hidden_sizes,
+        norm_class=torch.nn.LayerNorm,
+        norm_kwargs=[{"elementwise_affine": False,
+                     "normalized_shape": hidden_size} for hidden_size in cfg.network.policy_hidden_sizes],
     )
 
+    
     # Initialize policy weights
     for layer in policy_mlp.modules():
         if isinstance(layer, torch.nn.Linear):
             torch.nn.init.orthogonal_(layer.weight, 1.0)
             layer.bias.data.zero_()
 
+    clamp_operator = ClampOperator(-10, 10)
+
     # Add state-independent normal scale
     policy_mlp = torch.nn.Sequential(
         policy_mlp,
+        clamp_operator,
         AddStateIndependentNormalScale(
             proof_environment.action_spec.shape[-1], scale_lb=1e-8
         ),
@@ -257,26 +272,59 @@ def make_ppo_models_state(cfg, proof_environment):
     )
 
     # Define value architecture
-    value_mlp = MLP(
-        in_features=input_shape[-1],
-        activation_class=torch.nn.Tanh,
-        out_features=1,
-        num_cells=cfg.network.value_hidden_sizes,
+    nbins = cfg.network.nbins
+    Vmin = cfg.network.vmin
+    Vmax = cfg.network.vmax
+
+    support = torch.linspace(Vmin, Vmax, nbins)
+
+    value_net_kwargs = {
+        "in_features": input_shape[-1],
+        "activation_class": torch.nn.ReLU,
+        "out_features": nbins,
+        "num_cells": cfg.network.value_hidden_sizes,
+    }
+
+    value_net = MLP(
+        **value_net_kwargs,
     )
+    last_layer = value_net[-1]
 
-    # Initialize value weights
-    for layer in value_mlp.modules():
-        if isinstance(layer, torch.nn.Linear):
-            torch.nn.init.orthogonal_(layer.weight, 0.01)
-            layer.bias.data.zero_()
+    bias_data = torch.tensor([-0.01] * (20) + [-100.0] * (nbins - (20)))
+    last_layer.bias.data = bias_data
 
-    # Define value module
-    value_module = ValueOperator(
-        value_mlp,
-        in_keys=["observation"],
+    in_keys = ["observation"]
+    value_module_1 = TensorDictModule(
+        in_keys=in_keys,
+        out_keys=["state_value_logits"],
+        module=value_net,
     )
+    support_network = SupportOperator(support)
+    value_module_2 = TensorDictModule(support_network, in_keys=["state_value_logits"], out_keys=["state_value"])
+    value_module = TensorDictSequential(value_module_1, value_module_2)
 
-    return policy_module, value_module
+#### OLD VALUE MODULE
+    # value_mlp = MLP(
+    #     in_features=input_shape[-1],
+    #     activation_class=torch.nn.Tanh,
+    #     out_features=1,
+    #     num_cells=cfg.network.value_hidden_sizes,
+    # )
+
+    # # Initialize value weights
+    # for layer in value_mlp.modules():
+    #     if isinstance(layer, torch.nn.Linear):
+    #         torch.nn.init.orthogonal_(layer.weight, 0.01)
+    #         layer.bias.data.zero_()
+
+    # # Define value module
+    # value_module = ValueOperator(
+    #     value_mlp,
+    #     in_keys=["observation"],
+    # )
+    
+#### END OLD VALUE MODULE
+    return policy_module, value_module, support
 
 # def make_ppo_modules(cfg, proof_environment):
 #     input_shape = proof_environment.observation_spec["observation"].shape
@@ -365,6 +413,21 @@ def make_ppo_models_state(cfg, proof_environment):
 #     value_module = TensorDictSequential(value_module_1, value_module_2)
 #     return actor, value_module, support
 
+def load_observation_statistics(statistics_file, run_folder_name=""):
+    #debug outputs is at the root.
+    #commandline outputs is at scripts/patrol/outputs
+    load_from_saved_models = run_folder_name == ""
+    if load_from_saved_models:
+        outputs_folder = "../../../saved_models/"
+    else:
+        outputs_folder = "../../"
+
+    model_load_filename = f"{statistics_file}.td"
+    load_model_dir = outputs_folder + run_folder_name
+    print('Loading statistics from ' + load_model_dir)
+    loaded_state = TensorDict.load_memmap(load_model_dir + f"{model_load_filename}")
+    return loaded_state
+
 def load_model_state(model_name, run_folder_name=""):
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
@@ -381,11 +444,13 @@ def load_model_state(model_name, run_folder_name=""):
     return loaded_state
 
 def make_agent(cfg, eval_env, device):
-    policy_module, value_module = make_ppo_models_state(
+    policy_module, value_module, support = make_ppo_models_state(
         cfg, eval_env
     )
+    support = support.to(device)
     policy_module = policy_module.to(device)
     value_module = value_module.to(device)
+
     with torch.no_grad():
         td = eval_env.reset()
         td = td.to(device)
@@ -393,7 +458,7 @@ def make_agent(cfg, eval_env, device):
         td = value_module(td)
         td = td.to("cpu")
 
-    return policy_module, value_module
+    return policy_module, value_module, support
 
 # def make_agent(cfg, eval_env, device):
 #     policy_module, value_module, support = make_ppo_modules(
