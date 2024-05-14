@@ -79,12 +79,12 @@ def main(cfg: DictConfig):  # noqa: F821
 
     #cfg_optim_policy_lr = cfg.optim.lr_policy
     #cfg_optim_q_lr = cfg.optim.lr_q
-    load_model = False
+    load_model = True
     #commandline outputs is at scripts/patrol/outputs
     if load_model:
-        model_dir="2024-05-12/12-44-56/"
-        model_name = "training_snapshot_20016000"
-        observation_statistics_name = "observation_statistics_20016000"
+        model_dir="2024-05-14/01-07-16/"
+        model_name = "training_snapshot_20528000"
+        observation_statistics_name = "observation_statistics_20528000"
         loaded_state = load_model_state(model_name, model_dir)
 
         actor_state = loaded_state['model_actor']
