@@ -81,7 +81,7 @@ class OpusCurriculum(BaseCurriculum):
         #check time is initially 0. This task works because the agent was initialized with a delta heading of 0 (target heading == current heading)
         # check heading when simulation_time exceed check_time
 
-        if current_time >= check_time:
+        if -current_time >= check_time:
             heading_turn_count = min(self.heading_turn_counts, len(self.increment_size) - 1)
             delta = self.increment_size[heading_turn_count]
             delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment

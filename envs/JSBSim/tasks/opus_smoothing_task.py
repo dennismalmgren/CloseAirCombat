@@ -71,7 +71,7 @@ class OpusSmoothingTask(BaseTask):
 
     def load_observation_space(self):
         task_variable_count = 6
-        state_variable_count = 16
+        state_variable_count = 27
         self.observation_space = spaces.Box(low=-10, high=10., shape=(task_variable_count + state_variable_count,))
 
     def load_action_space(self):
@@ -209,23 +209,31 @@ class OpusSmoothingTask(BaseTask):
         uvw = self.state_prop_vals[1:4].copy()
         uvw = self.transform_uvw(uvw)
         attitude = self.state_prop_vals[4:7].copy()
-        attitude = self._convert_to_quaternion(attitude[0], attitude[1], attitude[2])
+        attitude = self._convert_to_sincos(attitude).flatten()
         speed_vc = self.state_prop_vals[7:8].copy()
         speed_vc /= 340 #unit: mach
         attitude_heading = self.state_prop_vals[8]
         attitude_heading = self._convert_to_sincos(attitude_heading)
-        #uvw_acc = self.state_prop_vals[9:12].copy()
-        #uvw_acc = self.transform_uvw(uvw_acc)
+        uvw_acc = self.state_prop_vals[9:12].copy()
+        uvw_acc = self.transform_uvw(uvw_acc)
+        #pqr_in = self.state_prop_vals[12:15].copy()
+        #pqr_acc = np.zeros(4,)
+        #pqr_acc[1:] = pqr_in
+        #pqr_quat = 0.5 * self.quaternion_multiply(attitude, pqr_acc)
         pqr_in = self.state_prop_vals[12:15].copy()
-        pqr_acc = np.zeros(4,)
-        pqr_acc[1:] = pqr_in
-        pqr_quat = 0.5 * self.quaternion_multiply(attitude, pqr_acc)
+        pqr_in = self._convert_to_sincos(pqr_in).flatten()
         altitude_v = self.state_prop_vals[15:16].copy()
         altitude_v = self.transform_uvw(altitude_v)
-        obs = np.concatenate([uvw, attitude, pqr_quat, attitude_heading, speed_vc, altitude, altitude_v, task_variables])
+        action_variables = self.get_action_variables(env, agent_id) 
+        obs = np.concatenate([uvw, attitude, pqr_in, uvw_acc, attitude_heading, speed_vc, altitude, altitude_v, action_variables, task_variables])
 
         norm_obs = np.clip(obs, self.observation_space.low, self.observation_space.high)
         return norm_obs
+    
+    def get_action_variables(self, env, agent_id):
+        agent = env.agents[agent_id]
+        action_variables = np.array(agent.get_property_values(self.action_props))
+        return action_variables
     
     def transform_uvw(self, uvw):
         return uvw / 340 #unit: mach

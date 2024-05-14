@@ -79,7 +79,7 @@ def main(cfg: DictConfig):  # noqa: F821
 
     #cfg_optim_policy_lr = cfg.optim.lr_policy
     #cfg_optim_q_lr = cfg.optim.lr_q
-    load_model = True
+    load_model = False
     #commandline outputs is at scripts/patrol/outputs
     if load_model:
         model_dir="2024-05-14/07-32-34/"

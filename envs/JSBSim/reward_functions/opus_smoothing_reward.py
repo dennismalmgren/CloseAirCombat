@@ -11,7 +11,7 @@ class OpusSmoothingReward(BaseRewardFunction):
     def __init__(self, config):
         super().__init__(config)
     #    self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_heading', '_alt', '_roll', '_speed', '_smoothness']]
-        self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_heading', '_alt', '_roll', '_speed', '_smoothness_p', '_smoothness_w', '_smoothness_p_ref', 'smoothness_w_ref', '_value_w_r', '_value_p_r']]
+        self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_heading', '_alt', '_roll', '_speed', '_smoothness_p', '_smoothness_w', '_smoothness_p_ref', '_smoothness_w_ref', '_value_p_r', '_value_w_r',  ]]
 
     def get_reward(self, task, env, agent_id):
         """
@@ -58,7 +58,7 @@ class OpusSmoothingReward(BaseRewardFunction):
         smoothness_p = smoothness_variables[3]
         smoothness_value_p = np.sum(np.abs(smoothness_p[-1] - smoothness_p[-2]))
 
-        smoothness_p_scale = 5.0
+        smoothness_p_scale = 1.0
         smooth_roll_r = math.exp(-((smoothness_value_p / smoothness_p_scale) ** 2))
         smooth_p_ref = smooth_roll_r
 
@@ -76,6 +76,7 @@ class OpusSmoothingReward(BaseRewardFunction):
         w_r_scale = 0.05
 
         value_w_r = math.exp(-((value_w / w_r_scale) ** 2))
+        value_w_ref = value_w_r
 
         p_history = task_history[1]
         p_history_cos = np.cos(p_history)
@@ -83,15 +84,15 @@ class OpusSmoothingReward(BaseRewardFunction):
         value_p_1 = np.sum(np.abs(p_history_sin[-1] - p_history_sin[-2]))
         value_p_2 = np.sum(np.abs(p_history_cos[-1] - p_history_cos[-2]))
 
-        p_r_scale = 0.09
+        p_r_scale = 0.01
         value_p_r = 0.5 * math.exp(-((value_p_1 / p_r_scale) ** 2)) + 0.5 * math.exp(-((value_p_2 / p_r_scale) ** 2))
-
+        value_p_ref = value_p_r
         #* smooth_roll_r * smooth_w_r
         reward =  (heading_r * alt_r * roll_r * speed_r) ** (1 / 4) #- smoothness_r
         if (heading_r * alt_r * roll_r * speed_r) >= 1.0:
             reward += (smooth_roll_r * smooth_w_r * value_w_r * value_p_r)**(1 / 4)
         else:
-            smooth_roll_r = smooth_w_r = 0.0
+            smooth_roll_r = smooth_w_r = value_w_r = value_p_r = 0.0
 
        # return self._process(reward, agent_id, (heading_r, alt_r, roll_r, speed_r, smoothness_r))
-        return self._process(reward, agent_id, (heading_r, alt_r, roll_r, speed_r, smooth_roll_r, smooth_w_r, smooth_p_ref, smooth_w_ref, value_w_r, value_p_r))
+        return self._process(reward, agent_id, (heading_r, alt_r, roll_r, speed_r, smooth_roll_r, smooth_w_r, value_p_r, value_w_r, smooth_p_ref, smooth_w_ref, value_p_ref, value_w_ref))
