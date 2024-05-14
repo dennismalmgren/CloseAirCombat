@@ -82,9 +82,9 @@ def main(cfg: DictConfig):  # noqa: F821
     load_model = True
     #commandline outputs is at scripts/patrol/outputs
     if load_model:
-        model_dir="2024-05-14/01-07-16/"
-        model_name = "training_snapshot_20528000"
-        observation_statistics_name = "observation_statistics_20528000"
+        model_dir="2024-05-14/07-32-34/"
+        model_name = "training_snapshot_24048000"
+        observation_statistics_name = "observation_statistics_24048000"
         loaded_state = load_model_state(model_name, model_dir)
 
         actor_state = loaded_state['model_actor']

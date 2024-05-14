@@ -226,12 +226,14 @@ def make_ppo_models_state(cfg, proof_environment):
         "max": proof_environment.action_spec.space.high,
         "tanh_loc": False,
     }
+    
+    nbins = cfg.network.nbins
 
     # Define policy architecture
     policy_mlp = MLP(
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
-        out_features=num_outputs,  # predict only loc
+        out_features= nbins * num_outputs,  # nbins per action dimension
         num_cells=cfg.network.policy_hidden_sizes,
         norm_class=torch.nn.LayerNorm,
         norm_kwargs=[{"elementwise_affine": False,
@@ -245,7 +247,19 @@ def make_ppo_models_state(cfg, proof_environment):
             torch.nn.init.orthogonal_(layer.weight, 1.0)
             layer.bias.data.zero_()
 
-    clamp_operator = ClampOperator(-10, 10)
+    policy_network_module = TensorDictModule(
+        module=policy_mlp,
+        in_keys=["observation"],
+        out_keys=["loc_logits"],
+    )
+
+    a_min = -10 * proof_environment.action_spec.shape[-1]
+    a_max = 10 * proof_environment.action_spec.shape[-1]
+
+    a_support = torch.linspace(a_min, a_max, nbins)
+    
+    policy_support_network = SupportOperator(support, num_outputs)
+    policy_support_module = TensorDictModule(policy_support_network, in_keys=["loc_logits"], out_keys=["loc"])
 
     # Add state-independent normal scale
     policy_mlp = torch.nn.Sequential(

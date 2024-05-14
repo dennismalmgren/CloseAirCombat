@@ -92,4 +92,4 @@ def main(cfg: "DictConfig"):  # noqa: F821
 
 
 if __name__ == "__main__":
-    main()
+    main() 
