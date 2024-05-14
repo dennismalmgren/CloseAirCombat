@@ -121,7 +121,15 @@ class OpusSmoothingTask(BaseTask):
         self.smoothness_p = {agent_id: np.zeros(5) for agent_id in env.agents}
         self.smoothness_q = {agent_id: np.zeros(5) for agent_id in env.agents}
         self.smoothness_r = {agent_id: np.zeros(5) for agent_id in env.agents}
-
+    
+    def get_smoothness_variables(self, env, agent_id):
+        return np.array([self.smoothness_u[agent_id][-self.step_num:], 
+                         self.smoothness_v[agent_id][-self.step_num:], 
+                         self.smoothness_w[agent_id][-self.step_num:], 
+                         self.smoothness_p[agent_id][-self.step_num:], 
+                         self.smoothness_q[agent_id][-self.step_num:], 
+                         self.smoothness_r[agent_id][-self.step_num:]])
+        
     def calculate_smoothness(self, env, agent_id):
         if self.step_num < 5:
             return np.zeros(6)
