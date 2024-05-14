@@ -63,14 +63,14 @@ collector:
 
 network:
   policy_hidden_sizes: [256, 256, 256]
-  value_hidden_sizes: [1024, 1024]
+  value_hidden_sizes: [2048, 2048]
   activation: "relu"
   default_policy_scale: 1.0
   scale_lb: 0.1
   device: "cuda:0"
   nbins: 101
   vmin: -10
-  vmax: 200
+  vmax: 250
 
 
 # replay buffer
