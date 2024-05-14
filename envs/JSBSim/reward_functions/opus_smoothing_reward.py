@@ -33,7 +33,7 @@ class OpusSmoothingReward(BaseRewardFunction):
         heading_r = math.exp(-((delta_heading_deg_with_tolerance / heading_error_scale) ** 2))
 
         alt_error_scale = 15.24  # m
-        altitude_error_tolerance = 15.24 # m
+        altitude_error_tolerance = 100.24 # m
         delta_altitude_m_with_tolerance = max(0, abs(delta_altitude_m) - altitude_error_tolerance)
         alt_r = math.exp(-((delta_altitude_m_with_tolerance / alt_error_scale) ** 2))
 
@@ -61,7 +61,7 @@ class OpusSmoothingReward(BaseRewardFunction):
         smoothness_p_scale = 5.0
         smooth_roll_r = math.exp(-((smoothness_value_p / smoothness_p_scale) ** 2))
         smooth_p_ref = smooth_roll_r
-        
+
         smoothness_w = smoothness_variables[2]
         smoothness_value_w = np.sum(np.abs(np.diff(smoothness_w, n=1)))
 
