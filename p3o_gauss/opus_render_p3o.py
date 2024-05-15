@@ -55,9 +55,9 @@ def main(cfg: DictConfig):  # noqa: F821
 
     load_model = True
     if load_model:
-        model_dir="2024-05-15/02-56-46/"
-        model_name = "training_snapshot_19536000"
-        observation_statistics_name = "observation_statistics_19536000"
+        model_dir="2024-05-15/09-09-59/"
+        model_name = "training_snapshot_3024000"
+        observation_statistics_name = "observation_statistics_3024000"
         loaded_state = load_model_state(model_name, model_dir)
         actor_state = loaded_state['model_actor']
         critic_state = loaded_state['model_critic']

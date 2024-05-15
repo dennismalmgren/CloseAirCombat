@@ -92,7 +92,7 @@ class OpusSmoothingReward(BaseRewardFunction):
         #* smooth_roll_r * smooth_w_r
         reward =  (heading_r * alt_r * roll_r * speed_r) ** (1 / 4) #- smoothness_r
         if (heading_r * alt_r * roll_r * speed_r) >= 1.0:
-            reward += (smooth_p_r * smooth_w_r * value_w_r * value_p_r * cumulative_roll_penalty)**(1 / 5)
+            reward += (smooth_p_r * smooth_w_r * value_w_r * value_p_r)**(1 / 4)
         else:
             smooth_p_r = smooth_w_r = value_w_r = value_p_r = 0.0
 

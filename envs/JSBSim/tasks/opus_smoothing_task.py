@@ -71,7 +71,7 @@ class OpusSmoothingTask(BaseTask):
 
     def load_observation_space(self):
         task_variable_count = 6
-        state_variable_count = 27
+        state_variable_count = 28
         self.observation_space = spaces.Box(low=-10, high=10., shape=(task_variable_count + state_variable_count,))
 
     def load_action_space(self):
@@ -225,7 +225,8 @@ class OpusSmoothingTask(BaseTask):
         altitude_v = self.state_prop_vals[15:16].copy()
         altitude_v = self.transform_uvw(altitude_v)
         action_variables = self.get_action_variables(env, agent_id) 
-        obs = np.concatenate([uvw, attitude, pqr_in, uvw_acc, attitude_heading, speed_vc, altitude, altitude_v, action_variables, task_variables])
+        phi_rad = self.state_prop_vals[4:5].copy()
+        obs = np.concatenate([phi_rad, uvw, attitude, pqr_in, uvw_acc, attitude_heading, speed_vc, altitude, altitude_v, action_variables, task_variables])
 
         norm_obs = np.clip(obs, self.observation_space.low, self.observation_space.high)
         return norm_obs
