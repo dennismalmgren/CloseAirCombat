@@ -1,0 +1,6 @@
+#Hydra
+hydra:
+  job:
+    chdir: True
+
+file_dir: acmi_files

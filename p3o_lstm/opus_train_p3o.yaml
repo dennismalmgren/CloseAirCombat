@@ -16,7 +16,7 @@ env:
 # Logger
 logger:
   backend: wandb
-  mode: online
+  mode: disabled
   exp_name: opus_heading
   project: opus_heading
   test_interval: 100_000
@@ -40,7 +40,7 @@ optim:
   loss_function: l2
   lr: 3.0e-4
   weight_decay: 0.0
-  mini_batch_size: 4000
+  mini_batch_size: 1000
   max_grad_norm: 10.0
   gae_lambda: 0.95
   clip_epsilon: 0.2
@@ -55,9 +55,9 @@ optim:
 # collector
 collector:
   total_frames: 10_000_000
-  frames_per_batch: 16000 #max_episode_steps * env_per_collector
+  frames_per_batch: 1000 #max_episode_steps * env_per_collector
   device: cpu
-  env_per_collector: 16
+  env_per_collector: 1
 
 network:
   hidden_sizes: [256, 256]

@@ -1,8 +1,8 @@
 # task and env
 env:
-  name: HalfCheetah-v5  # Use v4 to get rid of mujoco-py dependency
+  name: opus/opus_training  # Use v4 to get rid of mujoco-py dependency
   task: ""
-  library: gymnasium
+  library: opus
   seed: 42
   max_episode_steps: 1000
 
@@ -41,14 +41,14 @@ optim:
 network:
   hidden_sizes: [256, 256]
   activation: relu
-  device: null
+  device: "cuda:0"
 
 # logging
 logger:
   backend: wandb
-  project_name: torchrl_example_td3
+  project_name: opus_heading
   group_name: null
-  exp_name: ${env.name}_TD3
+  exp_name: opus_training_TD3
   mode: online
   eval_iter: 25000
-  video: False
+  save_iter: 100000

@@ -34,7 +34,6 @@ from torchrl.objectives.sac import SACLoss
 from torchrl.data import CompositeSpec
 from tensordict.nn import AddStateIndependentNormalScale
 import torch.nn.functional as F
-from torch import nn
 
 from torchrl.modules import (
     ActorValueOperator,
@@ -68,7 +67,7 @@ def apply_env_transforms(env):# max_episode_steps=1000):
         env,
         Compose(
             InitTracker(),
-            StepCounter(max_steps=12000),
+            StepCounter(max_steps=1000),
             DoubleToFloat(),
             VecNorm(in_keys=["observation"], decay=0.99999, eps=1e-2),
             ClipTransform(in_keys=["observation"], low=-10, high=10),
@@ -214,42 +213,6 @@ class ClampOperator(nn.Module):
     def forward(self, x):
         return torch.clamp(x, self.vmin, self.vmax)
     
-class RandomFourierFeatures(nn.Module):
-    def __init__(self, input_dim, num_features, scale=1.0):
-        super(RandomFourierFeatures, self).__init__()
-        self.register_buffer("num_features", torch.tensor(num_features))
-        self.scale = scale
-        # Generate W and b parameters
-        self.W = nn.Parameter(torch.randn(num_features, input_dim) * scale, requires_grad=False)
-        self.b = nn.Parameter(torch.rand(num_features) * 2 * torch.pi, requires_grad=False)
-
-    def forward(self, x):
-        # x should be (B, N)
-        # Apply the RFF mapping: sqrt(2/D) * cos(Wx + b)
-        transformed = torch.cos(torch.matmul(x, self.W.T) + self.b)
-        return torch.sqrt(2. / self.num_features) * transformed
-
-class FourierEmbeddingModule(nn.Module):
-    def __init__(self, input_dim, num_features):
-        super(FourierEmbeddingModule, self).__init__()
-        self.rff = RandomFourierFeatures(input_dim, num_features)
-
-    def forward(self, observation):
-        # Reshape from (B, N) to (B, 5, N // 5)
-        batch_shape = observation.shape[:-1]
-        N = observation.shape[-1]
-        x_reshaped = observation.view(*batch_shape, 5, N // 5)
-        
-        # Embed the first element (segment) of the reshaped tensor
-        first_embedded = self.rff(x_reshaped[..., :, :1])  # Apply RFF to the first segment
-        first_embedded = first_embedded.reshape(*batch_shape, 5, -1)
-        # Concatenate the embedded first segment with the remainder of the observations
-        remaining = x_reshaped[..., 1:]
-        output = torch.cat((first_embedded, remaining), dim=-1)
-        output = output.reshape(*batch_shape, -1)
-        
-        return output
-    
 def make_ppo_models_state(cfg, proof_environment):
 
     # Define input shape
@@ -263,20 +226,20 @@ def make_ppo_models_state(cfg, proof_environment):
         "max": proof_environment.action_spec.space.high,
         "tanh_loc": False,
     }
-
-    num_fourier_features = 64
-    fourier_embedding = FourierEmbeddingModule(1, num_fourier_features)
+    
+    nbins = cfg.network.nbins
 
     # Define policy architecture
     policy_mlp = MLP(
-        in_features=input_shape[-1] + num_fourier_features * 5 - 5,
+        in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
-        out_features=num_outputs,  # predict only loc
+        out_features= nbins * num_outputs,  # nbins per action dimension
         num_cells=cfg.network.policy_hidden_sizes,
         norm_class=torch.nn.LayerNorm,
         norm_kwargs=[{"elementwise_affine": False,
                      "normalized_shape": hidden_size} for hidden_size in cfg.network.policy_hidden_sizes],
     )
+
     
     # Initialize policy weights
     for layer in policy_mlp.modules():
@@ -284,11 +247,22 @@ def make_ppo_models_state(cfg, proof_environment):
             torch.nn.init.orthogonal_(layer.weight, 1.0)
             layer.bias.data.zero_()
 
-    clamp_operator = ClampOperator(-10, 10)
+    policy_network_module = TensorDictModule(
+        module=policy_mlp,
+        in_keys=["observation"],
+        out_keys=["loc_logits"],
+    )
+
+    a_min = -10 * proof_environment.action_spec.shape[-1]
+    a_max = 10 * proof_environment.action_spec.shape[-1]
+
+    a_support = torch.linspace(a_min, a_max, nbins)
+    
+    policy_support_network = SupportOperator(support, num_outputs)
+    policy_support_module = TensorDictModule(policy_support_network, in_keys=["loc_logits"], out_keys=["loc"])
 
     # Add state-independent normal scale
     policy_mlp = torch.nn.Sequential(
-        fourier_embedding,
         policy_mlp,
         clamp_operator,
         AddStateIndependentNormalScale(
@@ -319,7 +293,7 @@ def make_ppo_models_state(cfg, proof_environment):
     support = torch.linspace(Vmin, Vmax, nbins)
 
     value_net_kwargs = {
-        "in_features": input_shape[-1] + num_fourier_features * 5 - 5,
+        "in_features": input_shape[-1],
         "activation_class": torch.nn.ReLU,
         "out_features": nbins,
         "num_cells": cfg.network.value_hidden_sizes,
@@ -330,12 +304,9 @@ def make_ppo_models_state(cfg, proof_environment):
     )
     last_layer = value_net[-1]
 
-    bias_data = torch.tensor([-0.01] * (40) + [-100.0] * (nbins - (40)))
+    bias_data = torch.tensor([-0.01] * (20) + [-100.0] * (nbins - (20)))
     last_layer.bias.data = bias_data
-    value_net = nn.Sequential(
-        fourier_embedding,
-        value_net
-    )
+
     in_keys = ["observation"]
     value_module_1 = TensorDictModule(
         in_keys=in_keys,

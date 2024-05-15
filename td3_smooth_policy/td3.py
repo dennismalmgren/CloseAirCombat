@@ -22,8 +22,7 @@ from torchrl._utils import logger as torchrl_logger
 from torchrl.envs.utils import ExplorationType, set_exploration_type
 
 from torchrl.record.loggers import generate_exp_name, get_logger
-from td3_smooth_policy.utils import (
-    dump_video,
+from .utils import (
     log_metrics,
     make_collector,
     make_environment,
@@ -36,13 +35,7 @@ from td3_smooth_policy.utils import (
 
 @hydra.main(version_base="1.1", config_path="", config_name="config")
 def main(cfg: "DictConfig"):  # noqa: F821
-    device = cfg.network.device
-    if device in ("", None):
-        if torch.cuda.is_available():
-            device = torch.device("cuda:0")
-        else:
-            device = torch.device("cpu")
-    device = torch.device(device)
+    device = torch.device(cfg.network.device)
 
     # Create logger
     exp_name = generate_exp_name("TD3", cfg.logger.exp_name)
@@ -65,7 +58,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     np.random.seed(cfg.env.seed)
 
     # Create environments
-    train_env, eval_env = make_environment(cfg, logger=logger)
+    train_env, eval_env = make_environment(cfg)
 
     # Create agent
     model, exploration_policy = make_td3_agent(cfg, train_env, eval_env, device)
@@ -103,6 +96,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
     prb = cfg.replay_buffer.prb
     eval_rollout_steps = cfg.env.max_episode_steps
     eval_iter = cfg.logger.eval_iter
+    save_iter = cfg.logger.save_iter
+
     frames_per_batch = cfg.collector.frames_per_batch
     update_counter = 0
 
@@ -203,13 +198,23 @@ def main(cfg: "DictConfig"):  # noqa: F821
                     auto_cast_to_device=True,
                     break_when_any_done=True,
                 )
-                eval_env.apply(dump_video)
                 eval_time = time.time() - eval_start
                 eval_reward = eval_rollout["next", "reward"].sum(-2).mean().item()
                 metrics_to_log["eval/reward"] = eval_reward
                 metrics_to_log["eval/time"] = eval_time
         if logger is not None:
             log_metrics(logger, metrics_to_log, collected_frames)
+        if abs(collected_frames % save_iter) < frames_per_batch:
+            savestate = {
+                    'model': model.state_dict(),
+                    'loss_module': loss_module.state_dict(),
+                    'optimizer_actor': optimizer_actor.state_dict(),
+                    'optimizer_critic': optimizer_critic.state_dict(),
+                    "collected_frames": {"collected_frames": collected_frames}
+            }
+            torch.save(savestate, f"training_snapshot_{collected_frames}.pt")
+            replay_buffer.dumps("replay_buffer_{collected_frames}.rb")
+
         sampling_start = time.time()
 
     collector.shutdown()

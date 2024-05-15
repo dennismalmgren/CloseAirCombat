@@ -71,7 +71,7 @@ class OpusSmoothingTask(BaseTask):
 
     def load_observation_space(self):
         task_variable_count = 6
-        state_variable_count = 16
+        state_variable_count = 28
         self.observation_space = spaces.Box(low=-10, high=10., shape=(task_variable_count + state_variable_count,))
 
     def load_action_space(self):
@@ -81,7 +81,9 @@ class OpusSmoothingTask(BaseTask):
 
     def reset(self, env):
         super().reset(env)
+        self.step_num = 1
         self.reset_smoothness(env)
+        self.reset_task_history(env)
         for agent_id in env.agents:
             agent = env.agents[agent_id]
             current_altitude = agent.get_property_value(c.position_h_sl_m)
@@ -94,7 +96,22 @@ class OpusSmoothingTask(BaseTask):
 
     def step(self, env):
         super().step(env)
+        self.step_task_history(env)
         self.step_smoothness(env)
+        self.step_num += 1
+
+    def reset_task_history(self, env):
+        self.w_history = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.p_history = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.step_task_history(env)
+
+    def step_task_history(self, env):
+        for agent_id in env.agents:
+            agent = env.agents[agent_id]
+            self.w_history[agent_id][:4] = self.w_history[agent_id][1:]         
+            self.p_history[agent_id][:4] = self.p_history[agent_id][1:]   
+            self.w_history[agent_id][4] = agent.get_property_value(c.velocities_w_mps) / 340.0
+            self.p_history[agent_id][4] = agent.get_property_value(c.attitude_phi_rad)
 
     def step_smoothness(self, env):
         for agent_id in env.agents:
@@ -111,17 +128,28 @@ class OpusSmoothingTask(BaseTask):
             self.smoothness_p[agent_id][4] = agent.get_property_value(c.accelerations_pdot_rad_sec2)
             self.smoothness_q[agent_id][4] = agent.get_property_value(c.accelerations_qdot_rad_sec2)
             self.smoothness_r[agent_id][4] = agent.get_property_value(c.accelerations_rdot_rad_sec2)
-        self.step_num += 1
 
     def reset_smoothness(self, env):
-        self.step_num = 0
         self.smoothness_u = {agent_id: np.zeros(5) for agent_id in env.agents}
         self.smoothness_v = {agent_id: np.zeros(5) for agent_id in env.agents}
         self.smoothness_w = {agent_id: np.zeros(5) for agent_id in env.agents}
         self.smoothness_p = {agent_id: np.zeros(5) for agent_id in env.agents}
         self.smoothness_q = {agent_id: np.zeros(5) for agent_id in env.agents}
         self.smoothness_r = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.step_smoothness(env)
 
+    def get_task_history_variables(self, env, agent_id):
+        return np.array([self.w_history[agent_id][-self.step_num:], 
+                         self.p_history[agent_id][-self.step_num:]])
+    
+    def get_smoothness_variables(self, env, agent_id):
+        return np.array([self.smoothness_u[agent_id][-self.step_num:], 
+                         self.smoothness_v[agent_id][-self.step_num:], 
+                         self.smoothness_w[agent_id][-self.step_num:], 
+                         self.smoothness_p[agent_id][-self.step_num:], 
+                         self.smoothness_q[agent_id][-self.step_num:], 
+                         self.smoothness_r[agent_id][-self.step_num:]])
+        
     def calculate_smoothness(self, env, agent_id):
         if self.step_num < 5:
             return np.zeros(6)
@@ -181,23 +209,32 @@ class OpusSmoothingTask(BaseTask):
         uvw = self.state_prop_vals[1:4].copy()
         uvw = self.transform_uvw(uvw)
         attitude = self.state_prop_vals[4:7].copy()
-        attitude = self._convert_to_quaternion(attitude[0], attitude[1], attitude[2])
+        attitude = self._convert_to_sincos(attitude).flatten()
         speed_vc = self.state_prop_vals[7:8].copy()
         speed_vc /= 340 #unit: mach
         attitude_heading = self.state_prop_vals[8]
         attitude_heading = self._convert_to_sincos(attitude_heading)
-        #uvw_acc = self.state_prop_vals[9:12].copy()
-        #uvw_acc = self.transform_uvw(uvw_acc)
+        uvw_acc = self.state_prop_vals[9:12].copy()
+        uvw_acc = self.transform_uvw(uvw_acc)
+        #pqr_in = self.state_prop_vals[12:15].copy()
+        #pqr_acc = np.zeros(4,)
+        #pqr_acc[1:] = pqr_in
+        #pqr_quat = 0.5 * self.quaternion_multiply(attitude, pqr_acc)
         pqr_in = self.state_prop_vals[12:15].copy()
-        pqr_acc = np.zeros(4,)
-        pqr_acc[1:] = pqr_in
-        pqr_quat = 0.5 * self.quaternion_multiply(attitude, pqr_acc)
+        pqr_in = self._convert_to_sincos(pqr_in).flatten()
         altitude_v = self.state_prop_vals[15:16].copy()
         altitude_v = self.transform_uvw(altitude_v)
-        obs = np.concatenate([uvw, attitude, pqr_quat, attitude_heading, speed_vc, altitude, altitude_v, task_variables])
+        action_variables = self.get_action_variables(env, agent_id) 
+        phi_rad = self.state_prop_vals[4:5].copy()
+        obs = np.concatenate([phi_rad, uvw, attitude, pqr_in, uvw_acc, attitude_heading, speed_vc, altitude, altitude_v, action_variables, task_variables])
 
         norm_obs = np.clip(obs, self.observation_space.low, self.observation_space.high)
         return norm_obs
+    
+    def get_action_variables(self, env, agent_id):
+        agent = env.agents[agent_id]
+        action_variables = np.array(agent.get_property_values(self.action_props))
+        return action_variables
     
     def transform_uvw(self, uvw):
         return uvw / 340 #unit: mach

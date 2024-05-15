@@ -2,7 +2,6 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-import functools
 import tempfile
 from contextlib import nullcontext
 
@@ -23,6 +22,7 @@ from torchrl.envs import (
     RewardSum,
     StepCounter,
     TransformedEnv,
+    CatFrames
 )
 from torchrl.envs.libs.gym import GymEnv, set_gym_backend
 from torchrl.envs.utils import ExplorationType, set_exploration_type
@@ -37,73 +37,84 @@ from torchrl.modules import (
 
 from torchrl.objectives import SoftUpdate
 from torchrl.objectives.td3 import TD3Loss
-from torchrl.record import VideoRecorder
-
+from envs.JSBSim.torchrl.jsbsim_wrapper import JSBSimWrapper
+from envs.JSBSim.envs import OpusTrainingEnv
 
 # ====================================================================
 # Environment utils
 # -----------------
 
 
-def env_maker(cfg, device="cpu", from_pixels=False):
+def env_maker(cfg, device="cpu"):
     lib = cfg.env.library
     if lib in ("gym", "gymnasium"):
         with set_gym_backend(lib):
             return GymEnv(
                 cfg.env.name,
                 device=device,
-                from_pixels=from_pixels,
-                pixels_only=False,
             )
     elif lib == "dm_control":
-        env = DMControlEnv(
-            cfg.env.name, cfg.env.task, from_pixels=from_pixels, pixels_only=False
-        )
+        env = DMControlEnv(cfg.env.name, cfg.env.task)
         return TransformedEnv(
             env, CatTensors(in_keys=env.observation_spec.keys(), out_key="observation")
         )
+    elif lib == "opus":
+        env = OpusTrainingEnv(cfg.env.name)
+        wrapped_env = JSBSimWrapper(env, categorical_action_encoding=False)
+        return wrapped_env 
     else:
         raise NotImplementedError(f"Unknown lib {lib}.")
 
 
-def apply_env_transforms(env, max_episode_steps):
-    transformed_env = TransformedEnv(
-        env,
-        Compose(
-            StepCounter(max_steps=max_episode_steps),
-            InitTracker(),
-            DoubleToFloat(),
-            RewardSum(),
-        ),
-    )
-    return transformed_env
+def apply_env_transforms(env, cfg, max_episode_steps):
+    lib = cfg.env.library
+    if lib in ("gym", "gymnasium") or lib == "dm_control":    
+        transformed_env = TransformedEnv(
+            env,
+            Compose(
+                StepCounter(max_steps=max_episode_steps),
+                InitTracker(),
+                DoubleToFloat(),
+                RewardSum(),
+            ),
+        )
+        return transformed_env
+    else:
+        reward_keys = list(env.reward_spec.keys())
+        transformed_env = TransformedEnv(
+            env,
+            Compose(
+                InitTracker(),
+                StepCounter(max_episode_steps),
+                DoubleToFloat(),
+                RewardSum(in_keys=reward_keys,
+                        reset_keys=reward_keys
+                                   ),
+                CatFrames(5, dim=-1, in_keys=["observation"])
+            ),
+        )
+        return transformed_env
 
-
-def make_environment(cfg, logger=None):
+def make_environment(cfg):
     """Make environments for training and evaluation."""
-    partial = functools.partial(env_maker, cfg=cfg)
     parallel_env = ParallelEnv(
         cfg.collector.env_per_collector,
-        EnvCreator(partial),
+        EnvCreator(lambda cfg=cfg: env_maker(cfg)),
         serial_for_single=True,
     )
     parallel_env.set_seed(cfg.env.seed)
 
-    train_env = apply_env_transforms(parallel_env, cfg.env.max_episode_steps)
+    train_env = apply_env_transforms(
+        parallel_env, cfg, max_episode_steps=cfg.env.max_episode_steps
+    )
 
-    partial = functools.partial(env_maker, cfg=cfg, from_pixels=cfg.logger.video)
-    trsf_clone = train_env.transform.clone()
-    if cfg.logger.video:
-        trsf_clone.insert(
-            0, VideoRecorder(logger, tag="rendering/test", in_keys=["pixels"])
-        )
     eval_env = TransformedEnv(
         ParallelEnv(
             cfg.collector.env_per_collector,
-            EnvCreator(partial),
+            EnvCreator(lambda cfg=cfg: env_maker(cfg)),
             serial_for_single=True,
         ),
-        trsf_clone,
+        train_env.transform.clone(),
     )
     return train_env, eval_env
 
@@ -308,8 +319,3 @@ def get_activation(cfg):
         return nn.LeakyReLU
     else:
         raise NotImplementedError
-
-
-def dump_video(module):
-    if isinstance(module, VideoRecorder):
-        module.dump()
