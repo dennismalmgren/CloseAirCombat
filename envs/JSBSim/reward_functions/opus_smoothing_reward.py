@@ -11,7 +11,7 @@ class OpusSmoothingReward(BaseRewardFunction):
     def __init__(self, config):
         super().__init__(config)
     #    self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_heading', '_alt', '_roll', '_speed', '_smoothness']]
-        self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_heading', '_alt', '_roll', '_speed', '_smoothness_p', '_smoothness_w', '_smoothness_p_ref', '_smoothness_w_ref', '_value_p_r', '_value_w_r',  ]]
+        self.reward_item_names = [self.__class__.__name__ + item for item in ['', '_heading', '_alt', '_roll', '_speed', '_smooth_p', '_smooth_w', '_value_p', '_value_w', '_smooth_p_ref', '_smooth_w_ref', '_value_p_ref', '_value_w_ref']]
 
     def get_reward(self, task, env, agent_id):
         """
@@ -59,8 +59,8 @@ class OpusSmoothingReward(BaseRewardFunction):
         smoothness_value_p = np.sum(np.abs(smoothness_p[-1] - smoothness_p[-2]))
 
         smoothness_p_scale = 1.0
-        smooth_roll_r = math.exp(-((smoothness_value_p / smoothness_p_scale) ** 2))
-        smooth_p_ref = smooth_roll_r
+        smooth_p_r = math.exp(-((smoothness_value_p / smoothness_p_scale) ** 2))
+        smooth_p_ref = smooth_p_r
 
         smoothness_w = smoothness_variables[2]
         smoothness_value_w = np.sum(np.abs(smoothness_w[-1] - smoothness_w[-2]))
@@ -79,20 +79,22 @@ class OpusSmoothingReward(BaseRewardFunction):
         value_w_ref = value_w_r
 
         p_history = task_history[1]
-        p_history_cos = np.cos(p_history)
-        p_history_sin = np.sin(p_history)
-        value_p_1 = np.sum(np.abs(p_history_sin[-1] - p_history_sin[-2]))
-        value_p_2 = np.sum(np.abs(p_history_cos[-1] - p_history_cos[-2]))
 
-        p_r_scale = 0.01
-        value_p_r = 0.5 * math.exp(-((value_p_1 / p_r_scale) ** 2)) + 0.5 * math.exp(-((value_p_2 / p_r_scale) ** 2))
+        value_p = np.abs(p_history[-1])
+        p_r_scale = 0.1
+        value_p_r = math.exp(-((value_p / p_r_scale) ** 2)) #+ 0.5 * math.exp(-((value_p_2 / p_r_scale) ** 2))
         value_p_ref = value_p_r
+
+        cumulative_roll_deviation = np.sum(np.abs(p_history))
+        cumulative_roll_penalty_scale = 0.1
+        cumulative_roll_penalty = math.exp(-((cumulative_roll_deviation / cumulative_roll_penalty_scale) ** 2))
+
         #* smooth_roll_r * smooth_w_r
         reward =  (heading_r * alt_r * roll_r * speed_r) ** (1 / 4) #- smoothness_r
         if (heading_r * alt_r * roll_r * speed_r) >= 1.0:
-            reward += (smooth_roll_r * smooth_w_r * value_w_r * value_p_r)**(1 / 4)
+            reward += (smooth_p_r * smooth_w_r * value_w_r * value_p_r * cumulative_roll_penalty)**(1 / 5)
         else:
-            smooth_roll_r = smooth_w_r = value_w_r = value_p_r = 0.0
+            smooth_p_r = smooth_w_r = value_w_r = value_p_r = 0.0
 
        # return self._process(reward, agent_id, (heading_r, alt_r, roll_r, speed_r, smoothness_r))
-        return self._process(reward, agent_id, (heading_r, alt_r, roll_r, speed_r, smooth_roll_r, smooth_w_r, value_p_r, value_w_r, smooth_p_ref, smooth_w_ref, value_p_ref, value_w_ref))
+        return self._process(reward, agent_id, (heading_r, alt_r, roll_r, speed_r, smooth_p_r, smooth_w_r, value_p_r, value_w_r, smooth_p_ref, smooth_w_ref, value_p_ref, value_w_ref))

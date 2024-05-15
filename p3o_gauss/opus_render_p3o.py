@@ -55,9 +55,9 @@ def main(cfg: DictConfig):  # noqa: F821
 
     load_model = True
     if load_model:
-        model_dir="2024-05-14/21-38-22/"
-        model_name = "training_snapshot_4528000"
-        observation_statistics_name = "observation_statistics_4528000"
+        model_dir="2024-05-15/02-56-46/"
+        model_name = "training_snapshot_19536000"
+        observation_statistics_name = "observation_statistics_19536000"
         loaded_state = load_model_state(model_name, model_dir)
         actor_state = loaded_state['model_actor']
         critic_state = loaded_state['model_critic']
@@ -70,8 +70,8 @@ def main(cfg: DictConfig):  # noqa: F821
     run_dir = 'runs'
     # Main loop
     start_time = time.time()
-    #with set_exploration_type(ExplorationType.MODE), torch.no_grad():
-    with set_exploration_type(ExplorationType.RANDOM), torch.no_grad():
+    with set_exploration_type(ExplorationType.MODE), torch.no_grad():
+    #with set_exploration_type(ExplorationType.RANDOM), torch.no_grad():
         #logging.info("\nStart render ...")
         render_episode_rewards = 0
         render_td = eval_env.reset()
