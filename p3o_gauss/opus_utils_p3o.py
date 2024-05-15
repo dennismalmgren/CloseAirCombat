@@ -68,7 +68,7 @@ def apply_env_transforms(env):# max_episode_steps=1000):
         env,
         Compose(
             InitTracker(),
-            StepCounter(max_steps=12000),
+            StepCounter(max_steps=1000),
             DoubleToFloat(),
             VecNorm(in_keys=["observation"], decay=0.99999, eps=1e-2),
             ClipTransform(in_keys=["observation"], low=-10, high=10),
