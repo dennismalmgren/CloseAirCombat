@@ -46,6 +46,7 @@ def main(cfg: DictConfig):  # noqa: F821
     # Create environments
     cfg.collector.env_per_collector = 1
     train_env, eval_env = make_environment(cfg)
+   #eval_env.eval()
     reward_keys = list(train_env.reward_spec.keys())
 
     # Create agent
@@ -55,9 +56,9 @@ def main(cfg: DictConfig):  # noqa: F821
 
     load_model = True
     if load_model:
-        model_dir="2024-05-15/09-09-59/"
-        model_name = "training_snapshot_3024000"
-        observation_statistics_name = "observation_statistics_3024000"
+        model_dir="2024-05-15/14-14-52/"
+        model_name = "training_snapshot_16016000"
+        observation_statistics_name = "observation_statistics_16016000"
         loaded_state = load_model_state(model_name, model_dir)
         actor_state = loaded_state['model_actor']
         critic_state = loaded_state['model_critic']

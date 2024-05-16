@@ -58,7 +58,7 @@ class OpusSmoothingReward(BaseRewardFunction):
         smoothness_p = smoothness_variables[3]
         smoothness_value_p = np.sum(np.abs(smoothness_p[-1] - smoothness_p[-2]))
 
-        smoothness_p_scale = 1.0
+        smoothness_p_scale = 0.1
         smooth_p_r = math.exp(-((smoothness_value_p / smoothness_p_scale) ** 2))
         smooth_p_ref = smooth_p_r
 
