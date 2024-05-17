@@ -14,8 +14,7 @@ class OpusCurriculum(BaseCurriculum):
         self.max_altitude_increment = 2000 #m
         self.max_velocities_vc_mps_increment = 100 #m/s
         self.check_interval = 30 #seconds
-#        self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] 
-        self.increment_size = [0.6, 0.8, 1.0] 
+        self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] 
         self.heading_turn_counts = 0
         
     def get_init_state(self, agent_id):
@@ -26,11 +25,9 @@ class OpusCurriculum(BaseCurriculum):
         agent_init_states = dict()
         for agent_id in env.agents:
             #we also need to update location.
-            init_altitude_m = 2500.0
-            init_velocities_u_mps = 380.0
             init_heading_deg = env.np_random.uniform(0., 180.)
-#            init_altitude_m = env.np_random.uniform(2500., 9000.)
-#            init_velocities_u_mps = env.np_random.uniform(120., 365.)
+            init_altitude_m = env.np_random.uniform(2500., 9000.)
+            init_velocities_u_mps = env.np_random.uniform(120., 365.)
             init_lat_geod_deg = env.np_random.uniform(57.0, 60.0)
             init_long_gc_deg = env.np_random.uniform(15.0, 20.0)
             agent_init_states[agent_id] = {
@@ -40,14 +37,13 @@ class OpusCurriculum(BaseCurriculum):
                 'ic_long_gc_deg': init_long_gc_deg,
                 'ic_lat_geod_deg': init_lat_geod_deg,
             }
-        self.descend_turn_count = -1
         return agent_init_states
     
     def reset(self, env):
         self.task.reset(env)
 
         self.heading_turn_counts = 0
-        self.total_turn_counts = 0
+
         # for agent_id in env.agents:
         #     agent = env.agents[agent_id]
         #     current_heading_rad = agent.get_property_value(c.attitude_heading_true_rad) 
@@ -85,38 +81,13 @@ class OpusCurriculum(BaseCurriculum):
         #check time is initially 0. This task works because the agent was initialized with a delta heading of 0 (target heading == current heading)
         # check heading when simulation_time exceed check_time
 
-        if current_time >= check_time:
+        if -current_time >= check_time:
             heading_turn_count = min(self.heading_turn_counts, len(self.increment_size) - 1)
-            self.total_turn_counts = self.total_turn_counts + 1
             delta = self.increment_size[heading_turn_count]
-            current_altitude = agent.get_property_value(c.missions_cruise_target_position_h_sl_m)
-            if self.total_turn_counts % 3 == 0:
-                delta_heading = 90.0
-            else:
-                delta_heading = 0.0
-
-#            delta_heading = -180.0
-            delta_altitude = 2000.0
-            delta_velocities_u = 0.0
-            delta_time = 25.0
-            if heading_turn_count > 0:
-                delta_time = 20.0
-
-            if self.descend_turn_count > 0 and current_altitude >= 3000.0:
-                delta_altitude = -2000.0
-            elif self.descend_turn_count > 0 and current_altitude <= 3000.0:
-                self.descend_turn_count = -1
-
-            if current_altitude >= 7000.0:
-                self.descend_turn_count = heading_turn_count
-                delta_altitude = -2000.0
-
-#            delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
-#            delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
-            #delta_altitude = env.np_random.uniform(-0.5, 0.5) * self.max_altitude_increment
-            #delta_altitude = delta_altitude + np.sign(delta_altitude) * self.max_altitude_increment * 0.5
-#            delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_vc_mps_increment
-#            delta_time = env.np_random.uniform(30, 60)
+            delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
+            delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
+            delta_velocities_u = env.np_random.uniform(-delta, delta) * self.max_velocities_vc_mps_increment
+            delta_time = env.np_random.uniform(30, 60)
             
             new_altitude = agent.get_property_value(c.missions_cruise_target_position_h_sl_m) + delta_altitude
             new_altitude = min(max(1000, new_altitude), 9000) #clamp to 500-9000m

@@ -68,7 +68,7 @@ def apply_env_transforms(env):# max_episode_steps=1000):
         env,
         Compose(
             InitTracker(),
-            StepCounter(max_steps=1200),
+            StepCounter(max_steps=1000),
             DoubleToFloat(),
             VecNorm(in_keys=["observation"], decay=0.99999, eps=1e-2),
             ClipTransform(in_keys=["observation"], low=-10, high=10),
@@ -214,41 +214,41 @@ class ClampOperator(nn.Module):
     def forward(self, x):
         return torch.clamp(x, self.vmin, self.vmax)
     
-class RandomFourierFeatures(nn.Module):
-    def __init__(self, input_dim, num_features, scale=1.0):
-        super(RandomFourierFeatures, self).__init__()
-        self.register_buffer("num_features", torch.tensor(num_features))
-        self.scale = scale
-        # Generate W and b parameters
-        self.W = nn.Parameter(torch.randn(num_features, input_dim) * scale, requires_grad=False)
-        self.b = nn.Parameter(torch.rand(num_features) * 2 * torch.pi, requires_grad=False)
+# class RandomFourierFeatures(nn.Module):
+#     def __init__(self, input_dim, num_features, scale=1.0):
+#         super(RandomFourierFeatures, self).__init__()
+#         self.register_buffer("num_features", torch.tensor(num_features))
+#         self.scale = scale
+#         # Generate W and b parameters
+#         self.W = nn.Parameter(torch.randn(num_features, input_dim) * scale, requires_grad=False)
+#         self.b = nn.Parameter(torch.rand(num_features) * 2 * torch.pi, requires_grad=False)
 
-    def forward(self, x):
-        # x should be (B, N)
-        # Apply the RFF mapping: sqrt(2/D) * cos(Wx + b)
-        transformed = torch.cos(torch.matmul(x, self.W.T) + self.b)
-        return torch.sqrt(2. / self.num_features) * transformed
+#     def forward(self, x):
+#         # x should be (B, N)
+#         # Apply the RFF mapping: sqrt(2/D) * cos(Wx + b)
+#         transformed = torch.cos(torch.matmul(x, self.W.T) + self.b)
+#         return torch.sqrt(2. / self.num_features) * transformed
 
-class FourierEmbeddingModule(nn.Module):
-    def __init__(self, input_dim, num_features):
-        super(FourierEmbeddingModule, self).__init__()
-        self.rff = RandomFourierFeatures(input_dim, num_features)
+# class FourierEmbeddingModule(nn.Module):
+#     def __init__(self, input_dim, num_features):
+#         super(FourierEmbeddingModule, self).__init__()
+#         self.rff = RandomFourierFeatures(input_dim, num_features)
 
-    def forward(self, observation):
-        # Reshape from (B, N) to (B, 5, N // 5)
-        batch_shape = observation.shape[:-1]
-        N = observation.shape[-1]
-        x_reshaped = observation.view(*batch_shape, 5, N // 5)
+#     def forward(self, observation):
+#         # Reshape from (B, N) to (B, 5, N // 5)
+#         batch_shape = observation.shape[:-1]
+#         N = observation.shape[-1]
+#         x_reshaped = observation.view(*batch_shape, 5, N // 5)
         
-        # Embed the first element (segment) of the reshaped tensor
-        first_embedded = self.rff(x_reshaped[..., :, :1])  # Apply RFF to the first segment
-        first_embedded = first_embedded.reshape(*batch_shape, 5, -1)
-        # Concatenate the embedded first segment with the remainder of the observations
-        remaining = x_reshaped[..., 1:]
-        output = torch.cat((first_embedded, remaining), dim=-1)
-        output = output.reshape(*batch_shape, -1)
+#         # Embed the first element (segment) of the reshaped tensor
+#         first_embedded = self.rff(x_reshaped[..., :, :1])  # Apply RFF to the first segment
+#         first_embedded = first_embedded.reshape(*batch_shape, 5, -1)
+#         # Concatenate the embedded first segment with the remainder of the observations
+#         remaining = x_reshaped[..., 1:]
+#         output = torch.cat((first_embedded, remaining), dim=-1)
+#         output = output.reshape(*batch_shape, -1)
         
-        return output
+#         return output
     
 def make_ppo_models_state(cfg, proof_environment):
 
@@ -264,12 +264,12 @@ def make_ppo_models_state(cfg, proof_environment):
         "tanh_loc": False,
     }
 
-    num_fourier_features = 64
-    fourier_embedding = FourierEmbeddingModule(1, num_fourier_features)
+    #num_fourier_features = 64
+    #fourier_embedding = FourierEmbeddingModule(1, num_fourier_features)
 
     # Define policy architecture
     policy_mlp = MLP(
-        in_features=input_shape[-1] + num_fourier_features * 5 - 5,
+        in_features=input_shape[-1], #+ num_fourier_features * 5 - 5,
         activation_class=torch.nn.Tanh,
         out_features=num_outputs,  # predict only loc
         num_cells=cfg.network.policy_hidden_sizes,
@@ -288,7 +288,7 @@ def make_ppo_models_state(cfg, proof_environment):
 
     # Add state-independent normal scale
     policy_mlp = torch.nn.Sequential(
-        fourier_embedding,
+        #fourier_embedding,
         policy_mlp,
         clamp_operator,
         AddStateIndependentNormalScale(
@@ -319,7 +319,7 @@ def make_ppo_models_state(cfg, proof_environment):
     support = torch.linspace(Vmin, Vmax, nbins)
 
     value_net_kwargs = {
-        "in_features": input_shape[-1] + num_fourier_features * 5 - 5,
+        "in_features": input_shape[-1],# + num_fourier_features * 5 - 5,
         "activation_class": torch.nn.ReLU,
         "out_features": nbins,
         "num_cells": cfg.network.value_hidden_sizes,
@@ -333,7 +333,7 @@ def make_ppo_models_state(cfg, proof_environment):
     bias_data = torch.tensor([-0.01] * (40) + [-100.0] * (nbins - (40)))
     last_layer.bias.data = bias_data
     value_net = nn.Sequential(
-        fourier_embedding,
+        #fourier_embedding,
         value_net
     )
     in_keys = ["observation"]
