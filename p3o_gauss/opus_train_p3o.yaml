@@ -51,7 +51,7 @@ optim:
   entropy_coef: 0.01
   critic_coef: 1.0
   ppo_epochs: 5
-  anneal_lr: trie
+  anneal_lr: false
   anneal_clip_epsilon: false
 
 # collector
