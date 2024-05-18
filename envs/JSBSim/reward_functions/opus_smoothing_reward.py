@@ -68,11 +68,11 @@ class OpusSmoothingReward(BaseRewardFunction):
         #smoothness_r_scale = 0.1
         #smooth_r_r = math.exp(-((smoothness_value_r / smoothness_r_scale) ** 2))
 
-        smoothness_pdot_scale = 1.0
+        smoothness_pdot_scale = 0.25
         smooth_pdot_r = math.exp(-((smoothness_value_pdot / smoothness_pdot_scale) ** 2))
-        smoothness_qdot_scale = 1.0
+        smoothness_qdot_scale = 0.25
         smooth_qdot_r = math.exp(-((smoothness_value_qdot / smoothness_qdot_scale) ** 2))
-        smoothness_rdot_scale = 1.0
+        smoothness_rdot_scale = 0.25
         smooth_rdot_r = math.exp(-((smoothness_value_rdot / smoothness_rdot_scale) ** 2))
         
         #smoothness_reward = (smooth_p_r * smooth_q_r * smooth_r_r * smooth_pdot_r * smooth_qdot_r * smooth_rdot_r) ** (1 / 6)

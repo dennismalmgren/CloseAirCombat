@@ -82,9 +82,9 @@ def main(cfg: DictConfig):  # noqa: F821
     load_model = False
     #commandline outputs is at scripts/patrol/outputs
     if load_model:
-        model_dir="2024-05-15/14-14-52/"
-        model_name = "training_snapshot_16016000"
-        observation_statistics_name = "observation_statistics_16016000"
+        model_dir="2024-05-17/20-32-10/"
+        model_name = "training_snapshot_47552000"
+        observation_statistics_name = "observation_statistics_47552000" 
         loaded_state = load_model_state(model_name, model_dir)
 
         actor_state = loaded_state['model_actor']
@@ -173,7 +173,7 @@ def main(cfg: DictConfig):  # noqa: F821
 
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
     norms = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
-    alpha = 0.5
+
 
     for i, data in enumerate(collector):
         log_info = {}

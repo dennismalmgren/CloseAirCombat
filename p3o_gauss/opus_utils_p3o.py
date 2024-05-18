@@ -320,7 +320,7 @@ def make_ppo_models_state(cfg, proof_environment):
 
     value_net_kwargs = {
         "in_features": input_shape[-1],# + num_fourier_features * 5 - 5,
-        "activation_class": torch.nn.ReLU,
+        "activation_class": torch.nn.SiLU,
         "out_features": nbins,
         "num_cells": cfg.network.value_hidden_sizes,
     }
