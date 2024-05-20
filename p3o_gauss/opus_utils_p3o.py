@@ -7,9 +7,10 @@ import os
 import sys
 
 import torch
+
 from tensordict.nn import InteractionType, TensorDictModule, TensorDictSequential
 from tensordict.nn.distributions import NormalParamExtractor
-from torch import nn, optim
+from torch import nn, optim, Tensor
 from torchrl.collectors import SyncDataCollector
 from torchrl.data import TensorDictPrioritizedReplayBuffer, TensorDictReplayBuffer
 from torchrl.data.replay_buffers.storages import LazyMemmapStorage
@@ -213,7 +214,17 @@ class ClampOperator(nn.Module):
 
     def forward(self, x):
         return torch.clamp(x, self.vmin, self.vmax)
-    
+
+class TSSR(nn.Module):
+    def forward(self, input: Tensor) -> Tensor:
+        abs_input = torch.abs(input)
+        condition = abs_input <= 1
+        result = torch.where(
+            condition,
+            input,
+            torch.sign(input) * (2 * torch.sqrt(abs_input) - 1),
+        )
+        return result
 # class RandomFourierFeatures(nn.Module):
 #     def __init__(self, input_dim, num_features, scale=1.0):
 #         super(RandomFourierFeatures, self).__init__()
@@ -270,7 +281,7 @@ def make_ppo_models_state(cfg, proof_environment):
     # Define policy architecture
     policy_mlp = MLP(
         in_features=input_shape[-1], #+ num_fourier_features * 5 - 5,
-        activation_class=torch.nn.Tanh,
+        activation_class=torch.nn.SiLU,
         out_features=num_outputs,  # predict only loc
         num_cells=cfg.network.policy_hidden_sizes,
         norm_class=torch.nn.LayerNorm,

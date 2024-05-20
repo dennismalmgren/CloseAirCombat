@@ -16,7 +16,8 @@ class OpusCurriculum(BaseCurriculum):
         self.check_interval = 30 #seconds
         self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] 
         self.heading_turn_counts = 0
-        
+        self.include_turns_episode = False
+
     def get_init_state(self, agent_id):
         #hack. we know it's only one agent for now..
         return self.agent_init_states[agent_id]
@@ -44,6 +45,11 @@ class OpusCurriculum(BaseCurriculum):
 
         self.heading_turn_counts = 0
 
+        if np.random.rand() < 0.2:
+            self.include_turns_episode = True
+        else:
+            self.include_turns_episode = False
+        #self.include_turns_episode = True
         # for agent_id in env.agents:
         #     agent = env.agents[agent_id]
         #     current_heading_rad = agent.get_property_value(c.attitude_heading_true_rad) 
@@ -81,7 +87,7 @@ class OpusCurriculum(BaseCurriculum):
         #check time is initially 0. This task works because the agent was initialized with a delta heading of 0 (target heading == current heading)
         # check heading when simulation_time exceed check_time
 
-        if current_time >= check_time:
+        if current_time >= check_time and self.include_turns_episode:
             heading_turn_count = min(self.heading_turn_counts, len(self.increment_size) - 1)
             delta = self.increment_size[heading_turn_count]
             delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
