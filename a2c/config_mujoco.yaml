@@ -10,10 +10,10 @@ collector:
 # logger
 logger:
   backend: wandb
-  mode: disabled
+  mode: online
   project_name: policy_gauss
   group_name: null
-  exp_name: a2c
+  exp_name: a2c_128
   test_interval: 1_000_000
   num_test_episodes: 5
   video: False

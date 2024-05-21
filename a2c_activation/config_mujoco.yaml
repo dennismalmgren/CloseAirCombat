@@ -1,6 +1,6 @@
 # task and env
 env:
-  env_name: Hopper-v5
+  env_name: HalfCheetah-v5
 
 # collector
 collector:
@@ -13,7 +13,7 @@ logger:
   mode: online
   project_name: policy_gauss
   group_name: null
-  exp_name: a2c_softmax
+  exp_name: a2c_softmax_128
   test_interval: 1_000_000
   num_test_episodes: 5
   video: False

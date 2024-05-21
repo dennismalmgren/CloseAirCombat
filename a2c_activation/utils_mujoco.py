@@ -92,7 +92,7 @@ def make_ppo_models_state(proof_environment):
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
         out_features=num_outputs * nbins,  # predict only loc
-        num_cells=[64, 64],
+        num_cells=[128, 128],
     )
 
     policy_support_operator = SupportOperator(support, num_outputs)
