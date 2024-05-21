@@ -13,8 +13,8 @@ logger:
   mode: online
   project_name: policy_gauss
   group_name: null
-  exp_name: a2c_ce_128
-  test_interval: 1_000_000
+  exp_name: a2c_ce
+  test_interval: 10_000
   num_test_episodes: 5
   video: False
 
