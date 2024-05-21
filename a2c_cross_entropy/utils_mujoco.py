@@ -156,13 +156,13 @@ def make_ppo_models_state(proof_environment):
         in_keys=["observation"],
     )
 
-    return policy_module, value_module
+    return policy_module, value_module, support
 
 
 def make_ppo_models(env_name):
     proof_environment = make_env(env_name, device="cpu")
-    actor, critic = make_ppo_models_state(proof_environment)
-    return actor, critic
+    actor, critic, support = make_ppo_models_state(proof_environment)
+    return actor, critic, support
 
 
 # ====================================================================
