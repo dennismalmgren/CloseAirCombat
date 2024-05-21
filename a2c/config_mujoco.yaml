@@ -1,6 +1,6 @@
 # task and env
 env:
-  env_name: Hopper-v5
+  env_name: HalfCheetah-v5
 
 # collector
 collector:
@@ -13,11 +13,14 @@ logger:
   mode: online
   project_name: policy_gauss
   group_name: null
-  exp_name: a2c_128
+  exp_name: a2c_512
   test_interval: 10_000
   num_test_episodes: 5
   video: False
 
+network:
+  policy_hidden_sizes: [512, 512]
+  
 # Optim
 optim:
   lr: 3e-4
@@ -32,3 +35,4 @@ loss:
   critic_coef: 0.25
   entropy_coef: 0.0
   loss_critic_type: l2
+

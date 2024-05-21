@@ -33,7 +33,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     ) * num_mini_batches
 
     # Create models (check utils_mujoco.py)
-    actor, critic = make_ppo_models(cfg.env.env_name)
+    actor, critic = make_ppo_models(cfg.env.env_name, cfg)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create collector

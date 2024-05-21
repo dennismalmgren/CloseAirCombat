@@ -48,7 +48,7 @@ def make_env(
 # --------------------------------------------------------------------
 
 
-def make_ppo_models_state(proof_environment):
+def make_ppo_models_state(proof_environment, cfg):
 
     # Define input shape
     input_shape = proof_environment.observation_spec["observation"].shape
@@ -67,7 +67,7 @@ def make_ppo_models_state(proof_environment):
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
         out_features=num_outputs,  # predict only loc
-        num_cells=[128, 128],
+        num_cells=cfg.network.policy_hidden_sizes,
     )
 
     # Initialize policy weights
@@ -120,9 +120,9 @@ def make_ppo_models_state(proof_environment):
     return policy_module, value_module
 
 
-def make_ppo_models(env_name):
+def make_ppo_models(env_name, cfg):
     proof_environment = make_env(env_name, device="cpu")
-    actor, critic = make_ppo_models_state(proof_environment)
+    actor, critic = make_ppo_models_state(proof_environment, cfg)
     return actor, critic
 
 

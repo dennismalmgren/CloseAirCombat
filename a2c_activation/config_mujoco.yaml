@@ -13,10 +13,13 @@ logger:
   mode: online
   project_name: policy_gauss
   group_name: null
-  exp_name: a2c_softmax
+  exp_name: a2c_softmax_128
   test_interval: 10_000
   num_test_episodes: 5
   video: False
+
+network:
+  policy_hidden_sizes: [128, 128]
 
 # Optim
 optim:

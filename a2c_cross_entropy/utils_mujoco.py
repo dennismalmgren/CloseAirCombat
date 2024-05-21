@@ -66,7 +66,7 @@ class ClampOperator(torch.nn.Module):
     def forward(self, x):
         return torch.clamp(x, self.vmin, self.vmax)
 
-def make_ppo_models_state(proof_environment):
+def make_ppo_models_state(proof_environment, cfg):
 
     nbins = 101
     Vmin = -10.0
@@ -92,7 +92,7 @@ def make_ppo_models_state(proof_environment):
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
         out_features=num_outputs * nbins,  # predict only loc
-        num_cells=[128, 128],
+        num_cells=cfg.network.policy_hidden_sizes,
     )
 
     policy_support_operator = SupportOperator(support, num_outputs)
@@ -159,9 +159,9 @@ def make_ppo_models_state(proof_environment):
     return policy_module, value_module, support
 
 
-def make_ppo_models(env_name):
+def make_ppo_models(env_name, cfg):
     proof_environment = make_env(env_name, device="cpu")
-    actor, critic, support = make_ppo_models_state(proof_environment)
+    actor, critic, support = make_ppo_models_state(proof_environment, cfg)
     return actor, critic, support
 
 
