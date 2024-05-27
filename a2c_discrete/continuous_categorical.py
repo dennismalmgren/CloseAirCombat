@@ -147,8 +147,8 @@ class ContinuousCategorical(Distribution):
         indices_2d = indices_2d.squeeze(-1)
         samples_2d = samples_2d.squeeze(-1)
         noise = self.sample_noise(samples_2d)
-        #noise = torch.rand_like(samples_2d) * 0.02 - 0.01
         samples_2d = samples_2d + noise
+        #noise = torch.rand_like(samples_2d) * 0.02 - 0.01
         #indices_2d = indices_2d.reshape(self._extended_shape(sample_shape))
        # samples_2d = samples_2d.reshape(self._extended_shape(sample_shape))
         return indices_2d, samples_2d
