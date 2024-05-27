@@ -182,7 +182,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             log_info.update({f"train/{key}": value.item()})
         log_info.update(
             {
-                "train/lr": alpha * cfg.optim.lr,
+           #     "train/lr": alpha * cfg.optim.lr,
                 "train/sampling_time": sampling_time,
                 "train/training_time": training_time,
             }
