@@ -1,6 +1,6 @@
 # task and env
 env:
-  env_name: HalfCheetah-v5
+  env_name: Hopper-v5
 
 # collector
 collector:
@@ -11,16 +11,16 @@ collector:
 logger:
   backend: wandb
   mode: online
-  project_name: policy_gauss
-  group_name: null
-  exp_name: a2c_512
+  project_name: policy_discrete
+  group_name: a2c_64_hopper
+  exp_name: a2c_64
   test_interval: 10_000
   num_test_episodes: 5
   video: False
 
 network:
-  policy_hidden_sizes: [512, 512]
-  
+  policy_hidden_sizes: [64, 64]
+
 # Optim
 optim:
   lr: 3e-4

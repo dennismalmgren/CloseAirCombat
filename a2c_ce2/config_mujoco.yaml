@@ -13,13 +13,13 @@ logger:
   mode: online
   project_name: policy_gauss
   group_name: null
-  exp_name: a2c_ce_gauss_256
+  exp_name: a2c_ce_g2_64_128
   test_interval: 10_000
   num_test_episodes: 5
   video: False
 
 network:
-  policy_hidden_sizes: [256, 256]
+  policy_hidden_sizes: [64, 128]
 
 # Optim
 optim:

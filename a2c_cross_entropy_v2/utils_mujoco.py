@@ -7,7 +7,7 @@ import numpy as np
 import torch.nn
 import torch.optim
 
-from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
+from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule, TensorDictSequential
 from torchrl.data import CompositeSpec
 from torchrl.envs import (
     ClipTransform,
@@ -21,7 +21,7 @@ from torchrl.envs import (
 from torchrl.envs.libs.gym import GymEnv
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.record import VideoRecorder
-from .dropout_modules import ConsistentDropout, ConsistentDropoutModule
+
 
 # ====================================================================
 # Environment utils
@@ -46,9 +46,34 @@ def make_env(
 # ====================================================================
 # Model utils
 # --------------------------------------------------------------------
+class SupportOperator(torch.nn.Module):
+    def __init__(self, support, num_outputs):
+        super().__init__()
+        self.register_buffer("support", support)
+        self.num_outputs = num_outputs
 
+    def forward(self, x):
+        x_shape = x.shape
+        x = x.reshape(*x_shape[:-1], self.num_outputs, len(self.support))
+        return (x.softmax(-1) * self.support).sum(-1)
+
+class ClampOperator(torch.nn.Module):
+    def __init__(self, vmin, vmax):
+        super().__init__()
+        self.vmin = vmin
+        self.vmax = vmax
+
+    def forward(self, x):
+        return torch.clamp(x, self.vmin, self.vmax)
 
 def make_ppo_models_state(proof_environment, cfg):
+
+    nbins = 101
+    Vmin = -10.0
+    Vmax = 10.0
+
+    support = torch.linspace(Vmin, Vmax, nbins)
+
 
     # Define input shape
     input_shape = proof_environment.observation_spec["observation"].shape
@@ -63,34 +88,46 @@ def make_ppo_models_state(proof_environment, cfg):
     }
 
     # Define policy architecture
-    policy_mlp_1 = MLP(
+    policy_mlp = MLP(
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
-        out_features=num_outputs,  # predict only loc
+        out_features=num_outputs * nbins,  # predict only loc
         num_cells=cfg.network.policy_hidden_sizes,
     )
 
+    policy_support_operator = SupportOperator(support, num_outputs)
+
     # Initialize policy weights
-    for layer in policy_mlp_1.modules():
+    for layer in policy_mlp.modules():
         if isinstance(layer, torch.nn.Linear):
             torch.nn.init.orthogonal_(layer.weight, 1.0)
             layer.bias.data.zero_()
 
-   # policy_module_2 = ConsistentDropout()
+    policy_module_1 = TensorDictModule(
+        policy_mlp,
+        in_keys=["observation"],
+        out_keys=["loc_logits"],
+    )
+
     # Add state-independent normal scale
     policy_mlp = torch.nn.Sequential(
-        policy_mlp_1,
-    #    policy_module_2,
+        policy_support_operator,
         AddStateIndependentNormalScale(proof_environment.action_spec.shape[-1]),
     )
 
+    policy_module_2 = TensorDictModule(
+        module=policy_mlp,
+        in_keys=["loc_logits"],
+        out_keys=["loc", "scale"],
+    )
+
+    policy_module = TensorDictSequential(
+        policy_module_1,
+        policy_module_2,
+    )
     # Add probabilistic sampling of the actions
     policy_module = ProbabilisticActor(
-        TensorDictModule(
-            module=policy_mlp,
-            in_keys=["observation"],
-            out_keys=["loc", "scale"],
-        ),
+        policy_module,
         in_keys=["loc", "scale"],
         spec=CompositeSpec(action=proof_environment.action_spec),
         distribution_class=distribution_class,
@@ -119,13 +156,13 @@ def make_ppo_models_state(proof_environment, cfg):
         in_keys=["observation"],
     )
 
-    return policy_module, value_module
+    return policy_module, value_module, support
 
 
 def make_ppo_models(env_name, cfg):
     proof_environment = make_env(env_name, device="cpu")
-    actor, critic = make_ppo_models_state(proof_environment, cfg)
-    return actor, critic
+    actor, critic, support = make_ppo_models_state(proof_environment, cfg)
+    return actor, critic, support
 
 
 # ====================================================================

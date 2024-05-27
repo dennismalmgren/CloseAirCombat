@@ -6,6 +6,7 @@
 import numpy as np
 import torch.nn
 import torch.optim
+from tensordict.nn.distributions import NormalParamExtractor
 
 from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
 from torchrl.data import CompositeSpec
@@ -21,7 +22,7 @@ from torchrl.envs import (
 from torchrl.envs.libs.gym import GymEnv
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.record import VideoRecorder
-from .dropout_modules import ConsistentDropout, ConsistentDropoutModule
+
 
 # ====================================================================
 # Environment utils
@@ -49,7 +50,6 @@ def make_env(
 
 
 def make_ppo_models_state(proof_environment, cfg):
-
     # Define input shape
     input_shape = proof_environment.observation_spec["observation"].shape
 
@@ -63,25 +63,29 @@ def make_ppo_models_state(proof_environment, cfg):
     }
 
     # Define policy architecture
-    policy_mlp_1 = MLP(
+    policy_mlp = MLP(
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
-        out_features=num_outputs,  # predict only loc
+        out_features=num_outputs * 2,  # predict only loc
         num_cells=cfg.network.policy_hidden_sizes,
     )
-
     # Initialize policy weights
-    for layer in policy_mlp_1.modules():
+    for layer in policy_mlp.modules():
         if isinstance(layer, torch.nn.Linear):
             torch.nn.init.orthogonal_(layer.weight, 1.0)
             layer.bias.data.zero_()
 
-   # policy_module_2 = ConsistentDropout()
+    actor_extractor = NormalParamExtractor(
+        scale_mapping=f"biased_softplus_1.0",
+        scale_lb=0.1,
+    )
+ #   actor_net = torch.nn.Sequential(actor_net_mlp, actor_extractor)
+
     # Add state-independent normal scale
     policy_mlp = torch.nn.Sequential(
-        policy_mlp_1,
-    #    policy_module_2,
-        AddStateIndependentNormalScale(proof_environment.action_spec.shape[-1]),
+        policy_mlp,
+        actor_extractor
+#        AddStateIndependentNormalScale(proof_environment.action_spec.shape[-1]),
     )
 
     # Add probabilistic sampling of the actions

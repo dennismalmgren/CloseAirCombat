@@ -10,7 +10,7 @@ from tensordict import TensorDict, TensorDictBase
 from tensordict.nn import dispatch, ProbabilisticTensorDictSequential, TensorDictModule
 from tensordict.utils import NestedKey
 from torch import distributions as d
-from torchrl.modules.distributions import TanhNormal
+
 from torchrl.objectives.common import LossModule
 
 from torchrl.objectives.utils import (
@@ -31,7 +31,8 @@ from torchrl.objectives.value import (
 )
 
 
-class A2CCELoss(LossModule):
+
+class DiscretizedA2CLoss(LossModule):
     """TorchRL implementation of the A2C loss.
 
     A2C (Advantage Actor Critic) is a model-free, online RL algorithm that uses parallel rollouts of n steps to
@@ -222,6 +223,7 @@ class A2CCELoss(LossModule):
         done: NestedKey = "done"
         terminated: NestedKey = "terminated"
         sample_log_prob: NestedKey = "sample_log_prob"
+        discrete_action: NestedKey = "discrete_action"
 
     default_keys = _AcceptedKeys()
     default_value_estimator: ValueEstimators = ValueEstimators.GAE
@@ -236,6 +238,8 @@ class A2CCELoss(LossModule):
         entropy_coef: float = 0.01,
         critic_coef: float = 1.0,
         loss_critic_type: str = "smooth_l1",
+        loss_policy_type: str = "l2",
+        loss_policy_target_type: str = None,
         gamma: float = None,
         separate_losses: bool = False,
         advantage_key: str = None,
@@ -245,7 +249,6 @@ class A2CCELoss(LossModule):
         critic: ProbabilisticTensorDictSequential = None,
         reduction: str = None,
         clip_value: float | None = None,
-        support: torch.Tensor,
     ):
         if actor is not None:
             actor_network = actor
@@ -302,28 +305,11 @@ class A2CCELoss(LossModule):
             "entropy_coef", torch.as_tensor(entropy_coef, device=device)
         )
         self.register_buffer("critic_coef", torch.as_tensor(critic_coef, device=device))
-
-        self.register_buffer("support", support)
-        atoms = self.support.numel()
-        Vmin = self.support.min()
-        Vmax = self.support.max()
-        delta_z = (Vmax - Vmin) / (atoms - 1)
-        self.register_buffer(
-            "stddev", (0.75 * delta_z).unsqueeze(-1)
-        )
-        self.register_buffer(
-            "support_plus",
-            self.support + delta_z / 2
-        )
-        self.register_buffer(
-            "support_minus",
-            self.support - delta_z / 2
-        )
-
         if gamma is not None:
             raise TypeError(_GAMMA_LMBDA_DEPREC_ERROR)
         self.loss_critic_type = loss_critic_type
-
+        self.loss_policy_type = loss_policy_type
+        self.loss_policy_target_type = loss_policy_target_type
         if clip_value is not None:
             if isinstance(clip_value, float):
                 clip_value = torch.tensor(clip_value)
@@ -346,6 +332,7 @@ class A2CCELoss(LossModule):
     def in_keys(self):
         keys = [
             self.tensor_keys.action,
+            self.tensor_keys.discrete_action,
             ("next", self.tensor_keys.reward),
             ("next", self.tensor_keys.done),
             ("next", self.tensor_keys.terminated),
@@ -393,82 +380,13 @@ class A2CCELoss(LossModule):
             x = dist.rsample((self.samples_mc_entropy,))
             entropy = -dist.log_prob(x).mean(0)
         return entropy.unsqueeze(-1)
-    
-    def _construct_delta_target(
-            self, tensordict: TensorDictBase, 
-            action_support: torch.Tensor,
-            support_index: torch.Tensor
-    ):
-        #torch.gather(action_support, -1, support_index.long())
-        action = tensordict.get(self.tensor_keys.action)
-#        action_batch = action.reshape(-1, 1)
-#        action_batch = action_batch.clamp(action_support.min(dim=-1, keepdim=True)[0], action_support.max(dim=-1, keepdim=True)[0])
-        target = torch.zeros_like(action_support)
-        target.scatter_(-1, support_index.long(), 1.0)
-        target = target.reshape(*action.shape, action_support.shape[-1])
-        return target
-    
-    def _construct_gauss_target(
-            self, tensordict: TensorDictBase, action_support: torch.Tensor
-    ):
-        action = tensordict.get(self.tensor_keys.action)
-        action_batch = action.reshape(-1, 1)
-        action_batch = action_batch.clamp(action_support.min(dim=-1, keepdim=True)[0], action_support.max(dim=-1, keepdim=True)[0])
-        stddev_expanded = self.stddev.expand_as(action_batch)
-        dist = torch.distributions.Normal(action_batch, stddev_expanded)
-        atoms = action_support.shape[-1]
-        Vmin = action_support.min(dim=-1, keepdim=True)[0]
-        Vmax = action_support.max(dim=-1, keepdim=True)[0]
-        delta_z = (Vmax - Vmin) / (atoms - 1)
 
-        cdf_plus = dist.cdf(action_support + delta_z / 2)
-        cdf_minus = dist.cdf(action_support - delta_z / 2)
-        m = cdf_plus - cdf_minus
-        m = m.reshape(*action.shape[:-1], action.shape[-1], atoms)
-        m = m / m.sum(dim=-1, keepdim=True)
-        assert torch.allclose(m.sum(dim=-1), torch.ones_like(m.sum(dim=-1)))
-        return m
-    
-    def _construct_support(self, mean_outputs):
-        a_min = torch.tensor(-10.0, device=mean_outputs.device)
-        a_max = torch.tensor(10.0, device=mean_outputs.device)
-        nbins = 101
-        bin_dist = (a_max - a_min) / (nbins - 1)
-        support = torch.arange(a_min, a_max + bin_dist, step=bin_dist, device=mean_outputs.device)
-        support_index = (mean_outputs.detach() - a_min) // bin_dist
-        delta_support = support - support[support_index.long()]
-        dynamic_support = delta_support + mean_outputs
-        return dynamic_support, support_index
-
-    def _gauss_log_probs(
-            self, tensordict: TensorDictBase
-    ):
-        action = tensordict.get(self.tensor_keys.action)
-        with self.actor_network_params.to_module(
-            self.actor_network
-        ) if self.functional else contextlib.nullcontext():
-            td = self.actor_network(tensordict.clone())
-        action_means = td.get("loc")
-        action_means = action_means.reshape((-1, 1))
-        action_support, support_index = self._construct_support(action_means)
-
-        action_scale = td.get("scale").reshape((-1, 1)).expand((-1, action_support.shape[-1]))
-
-        action_dists = TanhNormal(
-            loc = action_support.reshape((-1, 1)), 
-            scale = action_scale.reshape((-1, 1))
-            )
-
-        action_reshaped = action.unsqueeze(-1).expand((-1, -1, action_support.shape[-1])).reshape((-1, 1))
-        action_logprobs = action_dists.log_prob(action_reshaped)
-        action_logprobs = action_logprobs.reshape((*action.shape, action_support.shape[-1]))
-        return action_logprobs, action_support.detach(), support_index.detach()
-    
-    def _log_probs(
+    def _dist(
         self, tensordict: TensorDictBase
     ) -> Tuple[torch.Tensor, d.Distribution]:
         # current log_prob of actions
         action = tensordict.get(self.tensor_keys.action)
+        discrete_action = tensordict.get(self.tensor_keys.discrete_action)
         if action.requires_grad:
             raise RuntimeError(
                 f"tensordict stored {self.tensor_keys.action} require grad."
@@ -480,7 +398,26 @@ class A2CCELoss(LossModule):
             self.actor_network
         ) if self.functional else contextlib.nullcontext():
             dist = self.actor_network.get_dist(tensordict_clone)
-        log_prob = dist.log_prob(action)
+        return dist
+
+    def _log_probs(
+        self, tensordict: TensorDictBase
+    ) -> Tuple[torch.Tensor, d.Distribution]:
+        # current log_prob of actions
+        action = tensordict.get(self.tensor_keys.action)
+        discrete_action = tensordict.get(self.tensor_keys.discrete_action)
+        if action.requires_grad:
+            raise RuntimeError(
+                f"tensordict stored {self.tensor_keys.action} require grad."
+            )
+        tensordict_clone = tensordict.select(
+            *self.actor_network.in_keys, strict=False
+        ).clone()
+        with self.actor_network_params.to_module(
+            self.actor_network
+        ) if self.functional else contextlib.nullcontext():
+            dist = self.actor_network.get_dist(tensordict_clone)
+        log_prob = dist.log_prob(discrete_action, action)
         log_prob = log_prob.unsqueeze(-1)
         return log_prob, dist
 
@@ -540,6 +477,52 @@ class A2CCELoss(LossModule):
             return None
         return self.critic_network_params.detach()
 
+    def _gauss(self, action, continuous_support, logits):
+        a_max = continuous_support.max()
+        a_min = continuous_support.min()
+        n_bins = continuous_support.size(-1)
+        a_step = (a_max - a_min) / (n_bins - 1)
+        stddev = 0.75 * a_step.unsqueeze(-1)
+        action_flat = action.flatten().unsqueeze(-1)
+        #loc = loc.clamp(self.support.min(), self.support.max())
+        stddev_expanded = stddev.expand_as(action_flat)
+        dist = torch.distributions.Normal(action_flat, stddev_expanded)
+        bs = action.shape[0]
+        continuous_support = continuous_support.unsqueeze(0).expand(bs, -1, -1)        
+        continuous_support = continuous_support.reshape(-1, n_bins)
+
+        cdf_plus = dist.cdf(continuous_support + a_step / 2)
+        cdf_minus = dist.cdf(continuous_support - a_step / 2)
+        m = cdf_plus - cdf_minus
+            #m[..., 0] = cdf_plus[..., 0]
+            #m[..., -1] = 1 - cdf_minus[..., -1]
+        m = m / m.sum(dim=-1, keepdim=True)  #this should be handled differently. check the paper
+        assert torch.allclose(m.sum(dim=-1), torch.ones_like(m.sum(dim=-1)))
+        m = m.reshape_as(logits)
+        return m
+
+    def _two_hot(self, action, continuous_support, logits):
+        action_flat = action.flatten().unsqueeze(-1)
+        a_min = continuous_support.min()
+        a_max = continuous_support.max()
+        n_bins = continuous_support.size(-1)
+        a_step = (a_max - a_min) / (n_bins - 1)
+        low_action = torch.floor((action_flat - a_min) / a_step) #todo. sometimes low_action == high_action
+        high_action = torch.ceil((action_flat - a_min) / a_step)
+        high_action[high_action==0] += 1
+        low_action[low_action == n_bins - 1] -= 1
+        high_action[high_action == low_action] += 1
+        assert torch.not_equal(low_action, high_action).all()
+        bs = action.shape[0]
+        continuous_support = continuous_support.unsqueeze(0).expand(bs, -1, -1)
+        continuous_support = continuous_support.reshape(-1, n_bins)
+        alpha = (torch.gather(continuous_support, -1, high_action.long()) - action_flat) / a_step
+        beta = (action_flat - torch.gather(continuous_support, -1, low_action.long())) / a_step
+        target = torch.zeros_like(logits)
+        target.scatter_(-1, low_action.long(), alpha)
+        target.scatter_(-1, high_action.long(), beta)
+        return target
+    
     @dispatch()
     def forward(self, tensordict: TensorDictBase) -> TensorDictBase:
         tensordict = tensordict.clone(False)
@@ -552,25 +535,49 @@ class A2CCELoss(LossModule):
             )
             advantage = tensordict.get(self.tensor_keys.advantage)
         assert not advantage.requires_grad
-        #this is where it goes down.
-        #instead, we want to calculate all the logits
-        #and then construct a target based on
-        #a distribution constructed from the sampled actions
-        ce_loss = torch.nn.CrossEntropyLoss(reduction="none")
-        gauss_log_probs, action_support, support_index = self._gauss_log_probs(tensordict)
-        gauss_log_probs = gauss_log_probs.reshape((-1, gauss_log_probs.shape[-1]))
+        if self.loss_policy_type == "l2":
+            log_probs, dist = self._log_probs(tensordict)
+            loss = -(log_probs * advantage)
+        elif self.loss_policy_type == "cross_entropy":
+            if self.loss_policy_target_type == "one_hot":
+                #action = tensordict.get(self.tensor_keys.action)
+                #todo: deal with multidiscrete
+                dist = self._dist(tensordict)
+                probs_per_dim = dist.continuous_support.size(-1)
+                action_dim = dist.continuous_support.size(-2)
+                discrete_action = tensordict.get(self.tensor_keys.discrete_action)
+                discrete_action = discrete_action.flatten()
+                targets = torch.nn.functional.one_hot(discrete_action, num_classes=probs_per_dim).float()
+                dist = self._dist(tensordict)
+                ce_loss = torch.nn.functional.cross_entropy(dist.logits, targets, reduction="none")
+                ce_loss = ce_loss.reshape(-1, action_dim)
+                ce_loss = ce_loss.sum(-1, keepdim=True)
+                loss = ce_loss * advantage
+            elif self.loss_policy_target_type == "two_hot":
+                dist = self._dist(tensordict)
+                probs_per_dim = dist.continuous_support.size(-1)
+                action_dim = dist.continuous_support.size(-2)
+                action = tensordict.get(self.tensor_keys.action)
+                action = action.clamp(-1.0, 1.0)
+                targets = self._two_hot(action, dist.continuous_support, logits=dist.logits)
+                ce_loss = torch.nn.functional.cross_entropy(dist.logits, targets, reduction="none")
+                ce_loss = ce_loss.reshape(-1, action_dim)
+                ce_loss = ce_loss.sum(-1, keepdim=True)
+                loss = ce_loss * advantage
+            elif self.loss_policy_target_type == "gauss":
+                dist = self._dist(tensordict)
+                probs_per_dim = dist.continuous_support.size(-1)
+                action_dim = dist.continuous_support.size(-2)
+                action = tensordict.get(self.tensor_keys.action)
+                action = action.clamp(-1.0, 1.0)
+                targets = self._gauss(action, dist.continuous_support, logits=dist.logits)
+                ce_loss = torch.nn.functional.cross_entropy(dist.logits, targets, reduction="none")
+                ce_loss = ce_loss.reshape(-1, action_dim)
+                ce_loss = ce_loss.sum(-1, keepdim=True)
+                loss = ce_loss * advantage
+#            log_probs, dist = self._log_probs(tensordict)
+#            loss = -(log_probs * advantage)
         
-        #action_targets = self._construct_delta_target(tensordict, action_support, support_index)
-
-        action_targets = self._construct_gauss_target(tensordict, action_support)
-        action_target_shape = action_targets.shape
-
-        action_targets = action_targets.reshape((-1, gauss_log_probs.shape[-1]))
-        the_loss = ce_loss(gauss_log_probs, action_targets).reshape((*action_target_shape[:-2], -1)).sum(-1, keepdim=True)
-        log_probs, dist = self._log_probs(tensordict)
-        loss = (the_loss * advantage)
-        #B x a_dim x len(support)
-        #loss = -(log_probs * advantage)
         td_out = TensorDict({"loss_objective": loss}, batch_size=[])
         if self.entropy_bonus:
             entropy = self.get_entropy_bonus(dist)
@@ -633,5 +640,6 @@ class A2CCELoss(LossModule):
             "done": self.tensor_keys.done,
             "terminated": self.tensor_keys.terminated,
             "sample_log_prob": self.tensor_keys.sample_log_prob,
+            "discrete_action": self.tensor_keys.discrete_action
         }
         self._value_estimator.set_keys(**tensor_keys)

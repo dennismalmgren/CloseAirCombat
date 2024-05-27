@@ -245,7 +245,6 @@ class A2CCELoss(LossModule):
         critic: ProbabilisticTensorDictSequential = None,
         reduction: str = None,
         clip_value: float | None = None,
-        support: torch.Tensor,
     ):
         if actor is not None:
             actor_network = actor
@@ -303,23 +302,13 @@ class A2CCELoss(LossModule):
         )
         self.register_buffer("critic_coef", torch.as_tensor(critic_coef, device=device))
 
-        self.register_buffer("support", support)
-        atoms = self.support.numel()
-        Vmin = self.support.min()
-        Vmax = self.support.max()
-        delta_z = (Vmax - Vmin) / (atoms - 1)
+      
+      
+        delta_z = torch.tensor(0.75 * 0.2, device = device)
         self.register_buffer(
             "stddev", (0.75 * delta_z).unsqueeze(-1)
         )
-        self.register_buffer(
-            "support_plus",
-            self.support + delta_z / 2
-        )
-        self.register_buffer(
-            "support_minus",
-            self.support - delta_z / 2
-        )
-
+      
         if gamma is not None:
             raise TypeError(_GAMMA_LMBDA_DEPREC_ERROR)
         self.loss_critic_type = loss_critic_type
@@ -435,7 +424,7 @@ class A2CCELoss(LossModule):
         nbins = 101
         bin_dist = (a_max - a_min) / (nbins - 1)
         support = torch.arange(a_min, a_max + bin_dist, step=bin_dist, device=mean_outputs.device)
-        support_index = (mean_outputs.detach() - a_min) // bin_dist
+        support_index = (mean_outputs.detach().clamp(a_min, a_max) - a_min) // bin_dist
         delta_support = support - support[support_index.long()]
         dynamic_support = delta_support + mean_outputs
         return dynamic_support, support_index
@@ -449,7 +438,9 @@ class A2CCELoss(LossModule):
         ) if self.functional else contextlib.nullcontext():
             td = self.actor_network(tensordict.clone())
         action_means = td.get("loc")
-        action_means = action_means.reshape((-1, 1))
+        a_min = torch.tensor(-10.0, device=action_means.device)
+        a_max = torch.tensor(10.0, device=action_means.device)
+        action_means = action_means.reshape((-1, 1)).clamp(a_min, a_max)
         action_support, support_index = self._construct_support(action_means)
 
         action_scale = td.get("scale").reshape((-1, 1)).expand((-1, action_support.shape[-1]))

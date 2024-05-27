@@ -22,7 +22,8 @@ from torchrl.envs.libs.gym import GymEnv
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.record import VideoRecorder
 from .dropout_modules import ConsistentDropout, ConsistentDropoutModule
-
+from torch.distributions import Categorical
+from .continuous_categorical import ContinuousCategorical
 # ====================================================================
 # Environment utils
 # --------------------------------------------------------------------
@@ -32,7 +33,7 @@ def make_env(
     env_name="HalfCheetah-v4", device="cpu", from_pixels=False, pixels_only=False
 ):
     env = GymEnv(
-        env_name, device=device, from_pixels=from_pixels, pixels_only=pixels_only
+        env_name, device=device, from_pixels=from_pixels, pixels_only=pixels_only, categorical_action_encoding=True
     )
     env = TransformedEnv(env)
     env.append_transform(RewardSum())
@@ -55,18 +56,24 @@ def make_ppo_models_state(proof_environment, cfg):
 
     # Define policy output distribution class
     num_outputs = proof_environment.action_spec.shape[-1]
-    distribution_class = TanhNormal
+    distribution_class = ContinuousCategorical
+    # distribution_kwargs = {
+    #     "min": proof_environment.action_spec.space.low,
+    #     "max": proof_environment.action_spec.space.high,
+    #     "tanh_loc": False,
+    # }
+    nbins = 101
+    supports = [torch.linspace(proof_environment.action_spec.space.low[i], proof_environment.action_spec.space.high[i], nbins) for i in range(num_outputs)]
+    support = torch.stack(supports, dim=0)
     distribution_kwargs = {
-        "min": proof_environment.action_spec.space.low,
-        "max": proof_environment.action_spec.space.high,
-        "tanh_loc": False,
-    }
-
+        "continuous_support": support
+        }
+    
     # Define policy architecture
     policy_mlp_1 = MLP(
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
-        out_features=num_outputs,  # predict only loc
+        out_features=num_outputs * nbins,  # predict only loc
         num_cells=cfg.network.policy_hidden_sizes,
     )
 
@@ -81,21 +88,22 @@ def make_ppo_models_state(proof_environment, cfg):
     policy_mlp = torch.nn.Sequential(
         policy_mlp_1,
     #    policy_module_2,
-        AddStateIndependentNormalScale(proof_environment.action_spec.shape[-1]),
+    #    AddStateIndependentNormalScale(proof_environment.action_spec.shape[-1]),
     )
-
+    return_log_prob = True if cfg.loss.loss_policy_type == "l2" else False
     # Add probabilistic sampling of the actions
     policy_module = ProbabilisticActor(
         TensorDictModule(
             module=policy_mlp,
             in_keys=["observation"],
-            out_keys=["loc", "scale"],
+            out_keys=["logits"],
         ),
-        in_keys=["loc", "scale"],
+        in_keys=["logits"],
+        out_keys=["discrete_action", "action"],
         spec=CompositeSpec(action=proof_environment.action_spec),
         distribution_class=distribution_class,
         distribution_kwargs=distribution_kwargs,
-        return_log_prob=True,
+        return_log_prob=return_log_prob,
         default_interaction_type=ExplorationType.RANDOM,
     )
 
