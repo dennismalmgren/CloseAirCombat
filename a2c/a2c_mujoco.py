@@ -166,7 +166,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             # Backward pass
             actor_loss.backward()
             critic_loss.backward()
-
+            torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
             # Update the networks
             actor_optim.step()
             critic_optim.step()

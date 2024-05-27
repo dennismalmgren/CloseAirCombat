@@ -60,7 +60,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         gamma=cfg.loss.gamma,
         lmbda=cfg.loss.gae_lambda,
         value_network=critic,
-        average_gae=True,
+        average_gae=False,
     )
     loss_module = DiscretizedA2CLoss(
         actor_network=actor,
@@ -164,7 +164,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             ).detach()
             critic_loss = loss["loss_critic"]
             actor_loss = loss["loss_objective"]  # + loss["loss_entropy"]
-            torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
+            #torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
             # Backward pass
             actor_loss.backward()
             critic_loss.backward()
