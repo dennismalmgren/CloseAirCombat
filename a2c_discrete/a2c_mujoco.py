@@ -73,8 +73,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
     )
 
     # Create optimizers
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr)
-    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr)
+    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr_policy)
+    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr_q)
 
     # Create logger
     logger = None
@@ -152,9 +152,9 @@ def main(cfg: "DictConfig"):  # noqa: F821
             if cfg.optim.anneal_lr:
                 alpha = 1 - (num_network_updates / total_network_updates)
                 for group in actor_optim.param_groups:
-                    group["lr"] = cfg.optim.lr * alpha
+                    group["lr"] = cfg.optim.lr_policy * alpha
                 for group in critic_optim.param_groups:
-                    group["lr"] = cfg.optim.lr * alpha
+                    group["lr"] = cfg.optim.lr_q * alpha
             num_network_updates += 1
 
             # Forward pass A2C loss
@@ -164,7 +164,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             ).detach()
             critic_loss = loss["loss_critic"]
             actor_loss = loss["loss_objective"]  # + loss["loss_entropy"]
-
+            torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
             # Backward pass
             actor_loss.backward()
             critic_loss.backward()

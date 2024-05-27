@@ -23,7 +23,8 @@ network:
 
 # Optim
 optim:
-  lr: 3e-4
+  lr_q: 3e-4
+  lr_policy: 3e-5
   weight_decay: 0.0
   anneal_lr: False
   max_grad_norm: 1.0
