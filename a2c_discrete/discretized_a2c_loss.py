@@ -540,7 +540,8 @@ class DiscretizedA2CLoss(LossModule):
             loss = -(log_probs * advantage)
         elif self.loss_policy_type == "cross_entropy":
             if self.loss_policy_target_type == "one_hot":
-                #action = tensordict.get(self.tensor_keys.action)
+                #standard
+                action = tensordict.get(self.tensor_keys.action)
                 #todo: deal with multidiscrete
                 dist = self._dist(tensordict)
                 probs_per_dim = dist.continuous_support.size(-1)
@@ -553,6 +554,21 @@ class DiscretizedA2CLoss(LossModule):
                 ce_loss = ce_loss.reshape(-1, action_dim)
                 ce_loss = ce_loss.sum(-1, keepdim=True)
                 loss = ce_loss * advantage
+                ## focal loss
+            elif self.loss_policy_target_type == "focal":
+                dist = self._dist(tensordict)
+                probs_per_dim = dist.continuous_support.size(-1)
+                action_dim = dist.continuous_support.size(-2)
+                discrete_action = tensordict.get(self.tensor_keys.discrete_action)
+                discrete_action = discrete_action.flatten()
+                targets = torch.nn.functional.one_hot(discrete_action, num_classes=probs_per_dim).float()
+                gamma = 1.25
+                f_loss = -torch.pow(1.0 - dist.probs, gamma) * dist.logits * targets
+                f_loss = f_loss.sum(-1)
+                #ce_loss = torch.nn.functional.cross_entropy(dist.logits, targets, reduction="none")
+                f_loss = f_loss.reshape(-1, action_dim)
+                f_loss = f_loss.sum(-1, keepdim=True)
+                loss = f_loss * advantage
             elif self.loss_policy_target_type == "two_hot":
                 dist = self._dist(tensordict)
                 probs_per_dim = dist.continuous_support.size(-1)
