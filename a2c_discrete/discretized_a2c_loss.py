@@ -560,10 +560,15 @@ class DiscretizedA2CLoss(LossModule):
                 probs_per_dim = dist.continuous_support.size(-1)
                 action_dim = dist.continuous_support.size(-2)
                 discrete_action = tensordict.get(self.tensor_keys.discrete_action)
+                probs = torch.gather(dist.probs, -1, discrete_action.reshape(-1, 1))
                 discrete_action = discrete_action.flatten()
                 targets = torch.nn.functional.one_hot(discrete_action, num_classes=probs_per_dim).float()
-                gamma = 1.25
-                f_loss = -torch.pow(1.0 - dist.probs, gamma) * dist.logits * targets
+                focal = torch.where(
+                    probs < 0.5,
+                     1.0,
+                     -torch.pow(1.0 - probs, 3.0)
+                ).detach()
+                f_loss = focal * dist.logits * targets
                 f_loss = f_loss.sum(-1)
                 #ce_loss = torch.nn.functional.cross_entropy(dist.logits, targets, reduction="none")
                 f_loss = f_loss.reshape(-1, action_dim)

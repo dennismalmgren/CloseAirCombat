@@ -10,7 +10,7 @@ collector:
 # logger
 logger:
   backend: wandb
-  mode: online
+  mode: disabled
   project_name: policy_discrete
   group_name: a2c_clip_64_hopper
   exp_name: a2c_clip_64

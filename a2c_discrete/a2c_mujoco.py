@@ -132,6 +132,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             )
 
         losses = TensorDict({}, batch_size=[num_mini_batches])
+        probabilities = TensorDict({}, batch_size=[num_mini_batches])
         training_start = time.time()
 
         # Compute GAE
@@ -147,6 +148,11 @@ def main(cfg: "DictConfig"):  # noqa: F821
             # Get a data batch
             batch = batch.to(device)
 
+
+            probabilities[k] = TensorDict(
+                {"lp_min": batch["sample_log_prob"].exp().min().item(),
+                    "lp_max": batch["sample_log_prob"].exp().max().item()
+                    })
             # Linearly decrease the learning rate and clip epsilon
             alpha = 1.0
             if cfg.optim.anneal_lr:
@@ -179,7 +185,11 @@ def main(cfg: "DictConfig"):  # noqa: F821
         # Get training losses
         training_time = time.time() - training_start
         losses = losses.apply(lambda x: x.float().mean(), batch_size=[])
+        probabilities = probabilities.apply(lambda x: x.float().mean(), batch_size=[])
+        
         for key, value in losses.items():
+            log_info.update({f"train/{key}": value.item()})
+        for key, value in probabilities.items():
             log_info.update({f"train/{key}": value.item()})
         log_info.update(
             {
