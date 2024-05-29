@@ -564,8 +564,8 @@ class DiscretizedA2CLoss(LossModule):
                 discrete_action = discrete_action.flatten()
                 targets = torch.nn.functional.one_hot(discrete_action, num_classes=probs_per_dim).float()
                 focal = torch.where(
-                    probs < 0.5,
-                     1.0,
+                    probs < 0.2,
+                     -torch.pow(1.0 - probs, 5.0),
                      -torch.pow(1.0 - probs, 3.0)
                 ).detach()
                 f_loss = focal * dist.logits * targets
