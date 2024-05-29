@@ -12,8 +12,8 @@ logger:
   backend: wandb
   mode: online
   project_name: policy_discrete
-  group_name: a2c_f_1024_hopper
-  exp_name: a2c_f_1024
+  group_name: a2c_df_1024_hopper
+  exp_name: a2c_df_1024
   test_interval: 10_000
   num_test_episodes: 5
   video: False

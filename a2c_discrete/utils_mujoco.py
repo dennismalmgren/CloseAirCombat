@@ -90,7 +90,7 @@ def make_ppo_models_state(proof_environment, cfg):
     #    policy_module_2,
     #    AddStateIndependentNormalScale(proof_environment.action_spec.shape[-1]),
     )
-    return_log_prob = True if cfg.loss.loss_policy_type == "l2" else False
+    return_log_prob = True #if cfg.loss.loss_policy_type == "l2" else False
     # Add probabilistic sampling of the actions
     policy_module = ProbabilisticActor(
         TensorDictModule(
