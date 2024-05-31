@@ -11,7 +11,7 @@ collector:
 # logger
 logger:
   backend: wandb
-  mode: disabled
+  mode: online
   project_name: policy_discrete_bandit
   group_name: a2c_c_mse_64_bandit
   exp_name: a2c_c_mse_64
