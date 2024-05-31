@@ -12,14 +12,17 @@ logger:
   backend: wandb
   mode: online
   project_name: policy_discrete
-  group_name: a2c_th_256_hopper
-  exp_name: a2c_th_256
+  group_name: a2c_gn_mode_128_hopper
+  exp_name: a2c_gn_mode_128
   test_interval: 10_000
   num_test_episodes: 5
   video: False
  
 network:
-  policy_hidden_sizes: [256, 256]
+  policy_hidden_sizes: [128, 128]
+  value_hidden_sizes: [64, 64]
+  add_noise: True
+  policy_nbins: 101
 
 # Optim
 optim:
@@ -38,4 +41,4 @@ loss:
   entropy_coef: 0.0
   loss_critic_type: l2
   loss_policy_type: cross_entropy #"l2", "cross_entropy"
-  loss_policy_target_type: two_hot #"one_hot", "two_hot", "gauss", "focal"
+  loss_policy_target_type: gauss #"one_hot", "two_hot", "gauss", "focal"

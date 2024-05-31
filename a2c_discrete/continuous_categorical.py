@@ -19,7 +19,7 @@ class ContinuousCategorical(Distribution):
     arg_constraints = {"probs": constraints.simplex, "logits": constraints.real_vector, "continuous_support": constraints.real}
     has_enumerate_support = True
 
-    def __init__(self, probs=None, logits=None, continuous_support=None, validate_args=None):
+    def __init__(self, probs=None, logits=None, continuous_support=None, add_noise=False, validate_args=None):
         self._probs_per_dim = continuous_support.size(-1)
         probs = probs.reshape(-1, self._probs_per_dim) if probs is not None else None
         logits = logits.reshape(-1, self._probs_per_dim) if logits is not None else None
@@ -40,7 +40,7 @@ class ContinuousCategorical(Distribution):
             raise ValueError("`continuous_support` must be specified.")
         #if continuous_support.dim() != 2 or continuous_support.size(0) != (probs.size(-1) if probs is not None else logits.size(-1)):
         #    raise ValueError("`continuous_support` must be a 2-dimensional tensor with size equal to the number of categories.")
-        
+        self.add_noise = add_noise        
         self._param = self.probs if probs is not None else self.logits
         self.continuous_support = continuous_support.to(self._param.device)
         self._num_events = self.continuous_support.size(-2)
@@ -127,8 +127,8 @@ class ContinuousCategorical(Distribution):
         def inverse_cdf(u):
             return torch.where(
                 u < 0.5,
-                low + torch.sqrt(u * (high - low) * (high + low)),
-                high - torch.sqrt((1 - u) * (high - low) * (high + low))
+                low + torch.sqrt(2 * (high**2) * u),
+                high - torch.sqrt(2 * (high**2) * (1 - u))
             )
 
         # Sample from a uniform distribution and apply the inverse CDF
@@ -146,10 +146,15 @@ class ContinuousCategorical(Distribution):
         samples_2d = torch.gather(self.continuous_support, -1, indices_2d)
         indices_2d = indices_2d.squeeze(-1)
         samples_2d = samples_2d.squeeze(-1)
-        #noise = torch.rand_like(samples_2d) * 0.01 - 0.05
+        #noise = torch.rand_like(samples_2d) * 0.02 - 0.01
         #samples_2d = samples_2d + noise
-        #noise = self.sample_noise(samples_2d)
-        #samples_2d = samples_2d + noise
+        if self.add_noise:
+            vmin = self.continuous_support.min()
+            vmax = self.continuous_support.max()
+            nbins = self.continuous_support.size(-1)
+            vdist = (vmax - vmin) / (nbins - 1)
+            noise = self.sample_noise(samples_2d, -vdist, vdist)
+            samples_2d = samples_2d + noise
         #noise = torch.rand_like(samples_2d) * 0.02 - 0.01
         #indices_2d = indices_2d.reshape(self._extended_shape(sample_shape))
        # samples_2d = samples_2d.reshape(self._extended_shape(sample_shape))

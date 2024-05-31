@@ -20,11 +20,12 @@ def main(cfg: "DictConfig"):  # noqa: F821
     from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
     from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
     from torchrl.envs import ExplorationType, set_exploration_type
-    from torchrl.objectives import A2CLoss
+    #from torchrl.objectives import A2CLoss
     from torchrl.objectives.value.advantages import GAE
     from torchrl.record.loggers import generate_exp_name, get_logger
     from .utils_mujoco import eval_model, make_env, make_ppo_models
-    from .discretized_a2c_loss import DiscretizedA2CLoss
+    from .a2c_ce_loss import A2CCELoss
+
     # Define paper hyperparameters
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     num_mini_batches = cfg.collector.frames_per_batch // cfg.loss.mini_batch_size
@@ -62,19 +63,17 @@ def main(cfg: "DictConfig"):  # noqa: F821
         value_network=critic,
         average_gae=False,
     )
-    loss_module = DiscretizedA2CLoss(
+    loss_module = A2CCELoss(
         actor_network=actor,
         critic_network=critic,
         loss_critic_type=cfg.loss.loss_critic_type,
-        loss_policy_type=cfg.loss.loss_policy_type,
-        loss_policy_target_type=cfg.loss.loss_policy_target_type,
         entropy_coef=cfg.loss.entropy_coef,
         critic_coef=cfg.loss.critic_coef,
     )
 
     # Create optimizers
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr_policy)
-    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr_q)
+    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr)
+    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr)
 
     # Create logger
     logger = None
@@ -132,7 +131,6 @@ def main(cfg: "DictConfig"):  # noqa: F821
             )
 
         losses = TensorDict({}, batch_size=[num_mini_batches])
-        probabilities = TensorDict({}, batch_size=[num_mini_batches])
         training_start = time.time()
 
         # Compute GAE
@@ -148,19 +146,14 @@ def main(cfg: "DictConfig"):  # noqa: F821
             # Get a data batch
             batch = batch.to(device)
 
-
-            probabilities[k] = TensorDict(
-                {"lp_min": batch["sample_log_prob"].exp().min().item(),
-                    "lp_max": batch["sample_log_prob"].exp().max().item()
-                    })
             # Linearly decrease the learning rate and clip epsilon
             alpha = 1.0
             if cfg.optim.anneal_lr:
                 alpha = 1 - (num_network_updates / total_network_updates)
                 for group in actor_optim.param_groups:
-                    group["lr"] = cfg.optim.lr_policy * alpha
+                    group["lr"] = cfg.optim.lr * alpha
                 for group in critic_optim.param_groups:
-                    group["lr"] = cfg.optim.lr_q * alpha
+                    group["lr"] = cfg.optim.lr * alpha
             num_network_updates += 1
 
             # Forward pass A2C loss
@@ -170,11 +163,10 @@ def main(cfg: "DictConfig"):  # noqa: F821
             ).detach()
             critic_loss = loss["loss_critic"]
             actor_loss = loss["loss_objective"]  # + loss["loss_entropy"]
-            
+
             # Backward pass
             actor_loss.backward()
             critic_loss.backward()
-            #torch.nn.utils.clip_grad_norm_(actor.parameters(), cfg.optim.max_grad_norm)
             #torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
             # Update the networks
             actor_optim.step()
@@ -185,15 +177,11 @@ def main(cfg: "DictConfig"):  # noqa: F821
         # Get training losses
         training_time = time.time() - training_start
         losses = losses.apply(lambda x: x.float().mean(), batch_size=[])
-        probabilities = probabilities.apply(lambda x: x.float().mean(), batch_size=[])
-        
         for key, value in losses.items():
-            log_info.update({f"train/{key}": value.item()})
-        for key, value in probabilities.items():
             log_info.update({f"train/{key}": value.item()})
         log_info.update(
             {
-           #     "train/lr": alpha * cfg.optim.lr,
+                "train/lr": alpha * cfg.optim.lr,
                 "train/sampling_time": sampling_time,
                 "train/training_time": training_time,
             }

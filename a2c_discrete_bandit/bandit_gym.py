@@ -14,7 +14,8 @@ class CustomContinuousEnv(gymnasium.Env):
         self.observation_space = spaces.Box(low=np.array([-np.inf]), high=np.array([np.inf]), shape=(1,), dtype=np.float32)
         
         # Target point for the reward
-        self.target_point = target_point
+        self.target_point0 = -0.5
+        self.target_point1 = 0.5
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         # Return the initial observation (always zero)
@@ -22,8 +23,10 @@ class CustomContinuousEnv(gymnasium.Env):
     
     def step(self, action):
         action = action[0]  # Extract the action value from the action array
-        reward = max(0.0, 1.0 - abs(action - self.target_point))
-        
+
+        reward1 = max(0.0, 2 * (0.5 - abs(action - self.target_point0)))
+        reward2 = max(0.0, 2 * (0.5 - abs(action - self.target_point1)))
+        reward = reward1 + reward2
         # Observation is always zero
         observation = np.zeros(1, dtype=np.float32)
         terminated = True

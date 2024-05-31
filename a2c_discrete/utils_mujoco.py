@@ -62,11 +62,12 @@ def make_ppo_models_state(proof_environment, cfg):
     #     "max": proof_environment.action_spec.space.high,
     #     "tanh_loc": False,
     # }
-    nbins = 101
+    nbins = cfg.network.policy_nbins
     supports = [torch.linspace(proof_environment.action_spec.space.low[i], proof_environment.action_spec.space.high[i], nbins) for i in range(num_outputs)]
     support = torch.stack(supports, dim=0)
     distribution_kwargs = {
-        "continuous_support": support
+        "continuous_support": support,
+        "add_noise": cfg.network.add_noise
         }
     
     # Define policy architecture
@@ -112,7 +113,7 @@ def make_ppo_models_state(proof_environment, cfg):
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
         out_features=1,
-        num_cells=[64, 64],
+        num_cells=cfg.network.value_hidden_sizes,
     )
 
     # Initialize value weights
