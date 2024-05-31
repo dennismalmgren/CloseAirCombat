@@ -24,7 +24,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
     from torchrl.objectives.value.advantages import GAE
     from torchrl.record.loggers import generate_exp_name, get_logger
     from .utils_mujoco import eval_model, make_env, make_ppo_models
-    from .a2c_mse_loss import A2CMSELoss
+    from .a2c_ce_loss import A2CCELoss
 
     # Define paper hyperparameters
     device = "cpu" if not torch.cuda.device_count() else "cuda"
@@ -34,8 +34,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
     ) * num_mini_batches
 
     # Create models (check utils_mujoco.py)
-    actor, critic = make_ppo_models(cfg.env.env_name, cfg)
-    actor, critic = actor.to(device), critic.to(device)
+    actor, critic, support = make_ppo_models(cfg.env.env_name, cfg)
+    actor, critic, support = actor.to(device), critic.to(device), support.to(device)
 
     # Create collector
     collector = SyncDataCollector(
@@ -63,12 +63,14 @@ def main(cfg: "DictConfig"):  # noqa: F821
         value_network=critic,
         average_gae=False,
     )
-    loss_module = A2CMSELoss(
+    loss_module = A2CCELoss(
         actor_network=actor,
         critic_network=critic,
         loss_critic_type=cfg.loss.loss_critic_type,
         entropy_coef=cfg.loss.entropy_coef,
         critic_coef=cfg.loss.critic_coef,
+        support = support,
+        loss_policy_type=cfg.loss.loss_policy_type
     )
 
     # Create optimizers

@@ -37,9 +37,9 @@ def make_env(
     env = TransformedEnv(env)
     env.append_transform(RewardSum())
     env.append_transform(StepCounter())
-    #env.append_transform(VecNorm(in_keys=["observation"]))
-    #env.append_transform(ClipTransform(in_keys=["observation"], low=-10, high=10))
-    #env.append_transform(DoubleToFloat(in_keys=["observation"]))
+    env.append_transform(VecNorm(in_keys=["observation"]))
+    env.append_transform(ClipTransform(in_keys=["observation"], low=-10, high=10))
+    env.append_transform(DoubleToFloat(in_keys=["observation"]))
     return env
 
 
@@ -71,15 +71,15 @@ def make_ppo_models_state(proof_environment, cfg):
     }
 
     nbins = cfg.network.nbins
-    policy_supports = [torch.linspace(proof_environment.action_spec.space.low[i], proof_environment.action_spec.space.high[i], nbins) for i in range(num_outputs)]
+    policy_supports = [torch.linspace(proof_environment.action_spec.space.low[i] * 3, proof_environment.action_spec.space.high[i] * 3, nbins) for i in range(num_outputs)]
     policy_support = torch.stack(policy_supports, dim=0)
 
     # Define policy architecture
     policy_network_1 = MLP(
         in_features=input_shape[-1],
-        activation_class=torch.nn.Identity,
+        activation_class=torch.nn.Tanh,
         out_features=num_outputs * nbins,  # predict only loc
-        num_cells=[64],
+        num_cells=[64, 64],
     )
 
     # Initialize policy weights
@@ -126,9 +126,9 @@ def make_ppo_models_state(proof_environment, cfg):
     # Define value architecture
     value_mlp = MLP(
         in_features=input_shape[-1],
-        activation_class=torch.nn.Identity,
+        activation_class=torch.nn.Tanh,
         out_features=1,
-        num_cells=[64],
+        num_cells=[64, 64],
     )
 
     # Initialize value weights
@@ -143,13 +143,13 @@ def make_ppo_models_state(proof_environment, cfg):
         in_keys=["observation"],
     )
 
-    return policy_module, value_module
+    return policy_module, value_module, policy_support
 
 
 def make_ppo_models(env_name, cfg):
     proof_environment = make_env(env_name, device="cpu")
-    actor, critic = make_ppo_models_state(proof_environment, cfg)
-    return actor, critic
+    actor, critic, policy_support = make_ppo_models_state(proof_environment, cfg)
+    return actor, critic, policy_support
 
 
 # ====================================================================
