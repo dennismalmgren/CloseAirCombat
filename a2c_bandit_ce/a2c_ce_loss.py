@@ -324,7 +324,25 @@ class A2CCELoss(LossModule):
                     f"clip_value must be a float or a scalar tensor, got {clip_value}."
                 )
         self.register_buffer("clip_value", clip_value)
-        self.register_buffer("support", support)
+#        action_support = self.support
+        #action_batch = action.reshape(-1, 1)
+        action_support = support.unsqueeze(0)
+        self.register_buffer("action_support", action_support)
+        atoms = action_support.shape[-1]
+        Vmin = action_support.min(dim=-1)[0]
+        Vmax = action_support.max(dim=-1)[0]
+        delta_z = (Vmax - Vmin) / (atoms - 1)
+
+        delta_z = delta_z.unsqueeze(-1)
+
+        stddev = (0.75 * delta_z)
+        action_support_plus = action_support + delta_z / 2
+        action_support_minus = action_support - delta_z / 2
+        self.register_buffer("stddev", stddev)
+        self.register_buffer("action_support_plus", action_support_plus.reshape(-1, atoms))
+        self.register_buffer("action_support_minus", action_support_minus.reshape(-1, atoms))
+        self.register_buffer("action_min", Vmin)
+        self.register_buffer("action_max", Vmax)
 
     @property
     def functional(self):
@@ -385,28 +403,15 @@ class A2CCELoss(LossModule):
     def _construct_gauss_target(
             self, action
     ):
-        action_support = self.support
-        #action_batch = action.reshape(-1, 1)
-        action_support = action_support.unsqueeze(0)
-        action = action.clamp(action_support.min(dim=-1)[0], action_support.max(dim=-1)[0]) #todo: be flexible about dimensions
-        atoms = action_support.shape[-1]
-        Vmin = action_support.min(dim=-1)[0]
-        Vmax = action_support.max(dim=-1)[0]
-        delta_z = (Vmax - Vmin) / (atoms - 1)
-
-        stddev = (0.75 * delta_z)
-        stddev_expanded = stddev.expand_as(action)
-        action_support = action_support.expand(*action.shape[:-1], -1, -1)
-        delta_z = delta_z.unsqueeze(-1)
-        action_support_plus = action_support + delta_z / 2
-        action_support_minus = action_support - delta_z / 2
-        action_support_plus_batch = action_support_plus.reshape(-1, atoms)
-        action_support_minus_batch = action_support_minus.reshape(-1, atoms)
+        action = action.clamp(self.action_support.min(dim=-1)[0], self.action_support.max(dim=-1)[0]) #todo: be flexible about dimensions
+        atoms = self.action_support_plus.shape[-1]
+        stddev_expanded = self.stddev.expand_as(action)
+        #action_support = self.action_support.expand(*action.shape[:-1], -1, -1)
         action_batch = action.reshape(-1, 1)
         stddev_batch = stddev_expanded.reshape(-1, 1)
         dist = torch.distributions.Normal(action_batch, stddev_batch)
-        cdf_plus = dist.cdf(action_support_plus_batch)
-        cdf_minus = dist.cdf(action_support_minus_batch)
+        cdf_plus = dist.cdf(self.action_support_plus)
+        cdf_minus = dist.cdf(self.action_support_minus)
         m = cdf_plus - cdf_minus
         m = m.reshape(*action.shape[:-1], action.shape[-1], atoms)
         m = m / m.sum(dim=-1, keepdim=True)
@@ -582,6 +587,7 @@ class A2CCELoss(LossModule):
             log_probs_variance, dist_variance = self._log_probs_variance(tensordict)
             loss_mean, dist_mean = self._loss_mse_mean(tensordict)
             loss = -(log_probs_variance * advantage) - (loss_mean * advantage)
+#            loss = -(loss_mean * advantage)
         elif self.loss_policy_type == "cross_entropy":
             log_probs_variance, dist_variance = self._log_probs_variance(tensordict)
             loss_mean, dist_mean = self._loss_gauss_mean(tensordict)

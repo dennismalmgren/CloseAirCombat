@@ -71,7 +71,7 @@ def make_ppo_models_state(proof_environment, cfg):
     }
 
     nbins = cfg.network.nbins
-    policy_supports = [torch.linspace(proof_environment.action_spec.space.low[i] * 3, proof_environment.action_spec.space.high[i] * 3, nbins) for i in range(num_outputs)]
+    policy_supports = [torch.linspace(proof_environment.action_spec.space.low[i] * 10, proof_environment.action_spec.space.high[i] * 10, nbins) for i in range(num_outputs)]
     policy_support = torch.stack(policy_supports, dim=0)
 
     # Define policy architecture
@@ -79,7 +79,7 @@ def make_ppo_models_state(proof_environment, cfg):
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
         out_features=num_outputs * nbins,  # predict only loc
-        num_cells=[64, 64],
+        num_cells=cfg.network.policy_hidden_sizes,
     )
 
     # Initialize policy weights
