@@ -1,5 +1,6 @@
 # task and env
 env:
+  #env_name: CustomContinuousEnv-v0
   env_name: Hopper-v5
 
 # collector
@@ -11,15 +12,17 @@ collector:
 logger:
   backend: wandb
   mode: online
-  project_name: policy_scale
-  group_name: a2c_64
-  exp_name: a2c_64
+  project_name: policy_discrete
+  group_name: a2c_ce_c_2048
+  exp_name: a2c_ce_c_2048
   test_interval: 10_000
   num_test_episodes: 5
   video: False
 
 network:
-  policy_hidden_sizes: [64, 64]
+  policy_hidden_sizes: [2048, 2048]
+  value_hidden_sizes: [2048, 2048]
+  nbins: 101
 
 # Optim
 optim:
@@ -36,4 +39,6 @@ loss:
   critic_coef: 0.25
   entropy_coef: 0.0
   loss_critic_type: l2
+  loss_policy_type: cross_entropy #mse, cross_entropy, log_prob
 
+ 

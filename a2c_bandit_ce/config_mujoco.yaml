@@ -12,15 +12,15 @@ collector:
 logger:
   backend: wandb
   mode: online
-  project_name: policy_discrete
-  group_name: a2c_lp_256
-  exp_name: a2c_lp_256
+  project_name: policy_scale
+  group_name: a2c_ce_64_16
+  exp_name: a2c_ce_64_16
   test_interval: 10_000
   num_test_episodes: 5
   video: False
 
 network:
-  policy_hidden_sizes: [256, 256]
+  policy_hidden_sizes: [64, 64]
   nbins: 101
 
 # Optim
@@ -38,6 +38,6 @@ loss:
   critic_coef: 0.25
   entropy_coef: 0.0
   loss_critic_type: l2
-  loss_policy_type: log_prob #mse, cross_entropy, log_prob
+  loss_policy_type: cross_entropy #mse, cross_entropy, log_prob
 
  

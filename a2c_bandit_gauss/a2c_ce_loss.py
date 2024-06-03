@@ -249,7 +249,7 @@ class A2CCELoss(LossModule):
         critic: ProbabilisticTensorDictSequential = None,
         reduction: str = None,
         clip_value: float | None = None,
-        support: torch.Tensor,
+        policy_support: torch.Tensor,
         loss_policy_type: str = "mse"
     ):
         if actor is not None:
@@ -326,7 +326,7 @@ class A2CCELoss(LossModule):
         self.register_buffer("clip_value", clip_value)
 #        action_support = self.support
         #action_batch = action.reshape(-1, 1)
-        action_support = support.unsqueeze(0)
+        action_support = policy_support.unsqueeze(0)
         self.register_buffer("action_support", action_support)
         atoms = action_support.shape[-1]
         Vmin = action_support.min(dim=-1)[0]
@@ -335,14 +335,34 @@ class A2CCELoss(LossModule):
 
         delta_z = delta_z.unsqueeze(-1)
 
-        stddev = (16.0 * delta_z).squeeze(-1)
+        stddev = (0.75 * delta_z).squeeze(-1)
         action_support_plus = action_support + delta_z / 2
         action_support_minus = action_support - delta_z / 2
-        self.register_buffer("stddev", stddev.unsqueeze(-1))
+        self.register_buffer("action_stddev", stddev.unsqueeze(-1))
         self.register_buffer("action_support_plus", action_support_plus)
         self.register_buffer("action_support_minus", action_support_minus)
         self.register_buffer("action_min", Vmin)
         self.register_buffer("action_max", Vmax)
+
+        value_support = value_support.unsqueeze(0)
+        self.register_buffer("value_support", value_support)
+        atoms = value_support.shape[-1]
+        Vmin = value_support.min(dim=-1)[0]
+        Vmax = value_support.max(dim=-1)[0]
+        delta_z = (Vmax - Vmin) / (atoms - 1)
+
+        delta_z = delta_z.unsqueeze(-1)
+
+        stddev = (0.75 * delta_z).squeeze(-1)
+        value_support_plus = value_support + delta_z / 2
+        value_support_minus = value_support - delta_z / 2
+        self.register_buffer("value_stddev", stddev.unsqueeze(-1))
+        self.register_buffer("value_support_plus", value_support_plus)
+        self.register_buffer("value_support_minus", value_support_minus)
+        self.register_buffer("value_min", Vmin)
+        self.register_buffer("value_max", Vmax)
+
+        
 
     @property
     def functional(self):
@@ -400,12 +420,12 @@ class A2CCELoss(LossModule):
             entropy = -dist.log_prob(x).mean(0)
         return entropy.unsqueeze(-1)
 
-    def _construct_gauss_target(
+    def _construct_gauss_action_target(
             self, action
     ):
         action = action.clamp(self.action_min, self.action_max) #todo: be flexible about dimensions
         action_atoms = action.unsqueeze(-1)
-        stddev_expanded = self.stddev.expand_as(action_atoms)
+        stddev_expanded = self.action_stddev.expand_as(action_atoms)
         action_support_plus = self.action_support_plus.expand(action.shape[0], *self.action_support_plus.shape[1:])
         action_support_minus = self.action_support_minus.expand(action.shape[0], *self.action_support_minus.shape[1:])
         action_atoms = action_atoms.expand_as(action_support_plus)
@@ -465,12 +485,11 @@ class A2CCELoss(LossModule):
                 dist_logits = dist_params['loc_logits']
                 #dist_logits = dist_logits.reshape(*dist_logits.shape[:-1], -1, self.support.shape[-1])
             action_inverted = dist._t._inverse(action)
-            target_dist = self._construct_gauss_target(action_inverted).reshape(-1, self.action_support.shape[-1])
+            target_dist = self._construct_gauss_action_target(action_inverted).reshape(-1, self.action_support.shape[-1])
             dist_logits = dist_logits.reshape(-1, self.action_support.shape[-1])
             ce_loss = torch.nn.functional.cross_entropy(dist_logits, target_dist, reduction='none').unsqueeze(-1)
             ce_loss = ce_loss.reshape_as(dist.loc)
-            #ce_loss = -0.00005 * ce_loss *  1 / (dist.scale ** 2)
-            ce_loss = -0.5 * ce_loss *  1 / (dist.scale ** 2)
+            ce_loss = -0.0005 * ce_loss *  1 / (dist.scale ** 2)
             ce_loss = ce_loss.sum(-1, keepdim=True)
             #mse_loss = - 0.5 * torch.nn.functional.mse_loss(action_inverted, dist.loc, reduction='none')
             #mse_loss_scaled = mse_loss / (dist.scale **2)

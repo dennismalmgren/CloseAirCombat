@@ -7,7 +7,7 @@ import numpy as np
 import torch.nn
 import torch.optim
 
-from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
+from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule, TensorDictSequential
 from torchrl.data import CompositeSpec
 from torchrl.envs import (
     ClipTransform,
@@ -21,9 +21,6 @@ from torchrl.envs import (
 from torchrl.envs.libs.gym import GymEnv
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.record import VideoRecorder
-from .dropout_modules import ConsistentDropout, ConsistentDropoutModule
-from torch.distributions import Categorical
-from .continuous_categorical import ContinuousCategorical
 from .bandit_gym import CustomContinuousEnv
 
 # ====================================================================
@@ -35,14 +32,14 @@ def make_env(
     env_name="HalfCheetah-v4", device="cpu", from_pixels=False, pixels_only=False
 ):
     env = GymEnv(
-        env_name, device=device, from_pixels=from_pixels, pixels_only=pixels_only, categorical_action_encoding=True
+        env_name, device=device, from_pixels=from_pixels, pixels_only=pixels_only
     )
     env = TransformedEnv(env)
     env.append_transform(RewardSum())
     env.append_transform(StepCounter())
-    #env.append_transform(VecNorm(in_keys=["observation"]))
-    #env.append_transform(ClipTransform(in_keys=["observation"], low=-10, high=10))
-    #env.append_transform(DoubleToFloat(in_keys=["observation"]))
+    env.append_transform(VecNorm(in_keys=["observation"]))
+    env.append_transform(ClipTransform(in_keys=["observation"], low=-10, high=10))
+    env.append_transform(DoubleToFloat(in_keys=["observation"]))
     return env
 
 
@@ -50,97 +47,123 @@ def make_env(
 # Model utils
 # --------------------------------------------------------------------
 
+class SupportOperator(torch.nn.Module):
+    def __init__(self, support):
+        super().__init__()
+        self.register_buffer("support", support)
 
+    def forward(self, x):
+        x = x.reshape(*x.shape[:-1], *self.support.shape)
+        return (x.softmax(-1) * self.support).sum(-1)
+    
 def make_ppo_models_state(proof_environment, cfg):
-
     # Define input shape
     input_shape = proof_environment.observation_spec["observation"].shape
 
     # Define policy output distribution class
     num_outputs = proof_environment.action_spec.shape[-1]
-    distribution_class = ContinuousCategorical
+    distribution_class = TanhNormal
     distribution_kwargs = {
-        "add_noise": cfg.network.add_noise
-    #     "min": proof_environment.action_spec.space.low,
-    #     "max": proof_environment.action_spec.space.high,
-    #     "tanh_loc": False,
+        "min": proof_environment.action_spec.space.low,
+        "max": proof_environment.action_spec.space.high,
+        "tanh_loc": False,
     }
-    nbins = cfg.network.policy_nbins
-    supports = [torch.linspace(proof_environment.action_spec.space.low[i], proof_environment.action_spec.space.high[i], nbins) for i in range(num_outputs)]
-    support = torch.stack(supports, dim=0)
-    distribution_kwargs = {
-        "continuous_support": support,
-        "add_noise": cfg.network.add_noise
-        }
-    
+
+    nbins = cfg.network.nbins
+    policy_supports = [torch.linspace(proof_environment.action_spec.space.low[i] * 10, proof_environment.action_spec.space.high[i] * 10, nbins) for i in range(num_outputs)]
+    policy_support = torch.stack(policy_supports, dim=0)
+
     # Define policy architecture
-    policy_mlp_1 = MLP(
+    policy_network_1 = MLP(
         in_features=input_shape[-1],
-        activation_class=torch.nn.Identity,
+        activation_class=torch.nn.Tanh,
         out_features=num_outputs * nbins,  # predict only loc
         num_cells=cfg.network.policy_hidden_sizes,
-         norm_class=torch.nn.LayerNorm,
-        norm_kwargs=[{"elementwise_affine": False,
-                     "normalized_shape": hidden_size} for hidden_size in cfg.network.policy_hidden_sizes],
+        # norm_class=torch.nn.LayerNorm,
+        # norm_kwargs=[{"elementwise_affine": False,
+        #              "normalized_shape": hidden_size} for hidden_size in cfg.network.policy_hidden_sizes],
     )
 
     # Initialize policy weights
-    for layer in policy_mlp_1.modules():
+    for layer in policy_network_1.modules():
         if isinstance(layer, torch.nn.Linear):
             torch.nn.init.orthogonal_(layer.weight, 1.0)
             layer.bias.data.zero_()
 
-   # policy_module_2 = ConsistentDropout()
-    # Add state-independent normal scale
-    policy_mlp = torch.nn.Sequential(
-        policy_mlp_1,
-    #    policy_module_2,
-    #    AddStateIndependentNormalScale(proof_environment.action_spec.shape[-1]),
+    policy_network_1_module = TensorDictModule(
+        module=policy_network_1,
+        in_keys=["observation"],
+        out_keys=["loc_logits"]
     )
-    return_log_prob = True if cfg.loss.loss_policy_type == "l2" else False
+    policy_network_2 = SupportOperator(policy_support)
+    policy_network_2_module = TensorDictModule(
+        module=policy_network_2,
+        in_keys=["loc_logits"],
+        out_keys=["loc"]
+    )
+
+    policy_network_3 = AddStateIndependentNormalScale(proof_environment.action_spec.shape[-1])
+    policy_network_3_module = TensorDictModule(
+        module=policy_network_3,
+        in_keys=["loc"],
+        out_keys=["loc", "scale"]
+    )
+    
+
     # Add probabilistic sampling of the actions
     policy_module = ProbabilisticActor(
-        TensorDictModule(
-            module=policy_mlp,
-            in_keys=["observation"],
-            out_keys=["logits"],
+        TensorDictSequential(
+            policy_network_1_module, 
+            policy_network_2_module,
+            policy_network_3_module
         ),
-        in_keys=["logits"],
-        out_keys=["discrete_action", "action"],
+        in_keys=["loc", "scale"],
         spec=CompositeSpec(action=proof_environment.action_spec),
         distribution_class=distribution_class,
         distribution_kwargs=distribution_kwargs,
-        return_log_prob=return_log_prob,
+        return_log_prob=True,
         default_interaction_type=ExplorationType.RANDOM,
     )
-
+    value_supports = [torch.linspace(proof_environment.action_spec.space.low[i] * 10, proof_environment.action_spec.space.high[i] * 10, nbins) for i in range(num_outputs)]
+    value_support = torch.stack(value_supports, dim=0)
     # Define value architecture
-    value_mlp = MLP(
+    value_net = MLP(
         in_features=input_shape[-1],
-        activation_class=torch.nn.Identity,
-        out_features=1,
+        activation_class=torch.nn.Tanh,
+        out_features=nbins,
         num_cells=cfg.network.value_hidden_sizes,
     )
 
     # Initialize value weights
-    for layer in value_mlp.modules():
+    for layer in value_net.modules():
         if isinstance(layer, torch.nn.Linear):
             torch.nn.init.orthogonal_(layer.weight, 0.01)
             layer.bias.data.zero_()
-
-    # Define value module
-    value_module = ValueOperator(
-        value_mlp,
-        in_keys=["observation"],
+    in_keys =  ["observation"]
+    value_module_1 = TensorDictModule(
+        module=value_net
+        in_keys=in_keys,
+        out_keys=["state_value_logits"]
     )
 
-    return policy_module, value_module
+    support_value_net = SupportOperator(value_support)
+    value_module_2 = TensorDictModule(
+        module=support_value_net,
+        in_keys=["state_value_logits"],
+        out_keys=["state_value"]
+    )
+    value_module = TensorDictSequential(
+        value_module_1,
+        value_module_2
+    )
+
+    return policy_module, value_module, policy_support, value_support
 
 
 def make_ppo_models(env_name, cfg):
     proof_environment = make_env(env_name, device="cpu")
-    actor, critic = make_ppo_models_state(proof_environment, cfg)
-    return actor, critic
+    actor, critic, policy_support, value_support = make_ppo_models_state(proof_environment, cfg)
+    return actor, critic, policy_support, value_support
 
 
 # ====================================================================

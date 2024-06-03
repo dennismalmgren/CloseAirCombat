@@ -133,6 +133,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
             )
 
         losses = TensorDict({}, batch_size=[num_mini_batches])
+        scales = TensorDict({}, batch_size=[num_mini_batches])
+
         training_start = time.time()
 
         # Compute GAE
@@ -165,11 +167,13 @@ def main(cfg: "DictConfig"):  # noqa: F821
             ).detach()
             critic_loss = loss["loss_critic"]
             actor_loss = loss["loss_objective"]  # + loss["loss_entropy"]
+            scales[k] = data.select('scale').detach()
 
             # Backward pass
             actor_loss.backward()
             critic_loss.backward()
-            #torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(actor.parameters(), cfg.optim.max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
             # Update the networks
             actor_optim.step()
             critic_optim.step()
@@ -179,8 +183,21 @@ def main(cfg: "DictConfig"):  # noqa: F821
         # Get training losses
         training_time = time.time() - training_start
         losses = losses.apply(lambda x: x.float().mean(), batch_size=[])
+        scales_mean = scales.apply(lambda x: x.float().mean(), batch_size=[])
+        scales_min = scales.apply(lambda x: x.float().min(), batch_size=[])
+        scales_max = scales.apply(lambda x: x.float().max(), batch_size=[])
+        scales_std = scales.apply(lambda x: x.float().std(), batch_size=[])
+
         for key, value in losses.items():
             log_info.update({f"train/{key}": value.item()})
+        for key, value in scales_mean.items():
+            log_info.update({f"train/{key}_mean": value.item()})   
+        for key, value in scales_min.items():
+            log_info.update({f"train/{key}_min": value.item()})   
+        for key, value in scales_max.items():
+            log_info.update({f"train/{key}_max": value.item()})   
+        for key, value in scales_std.items():
+            log_info.update({f"train/{key}_std": value.item()})                                            
         log_info.update(
             {
                 "train/lr": alpha * cfg.optim.lr,
