@@ -335,7 +335,7 @@ class A2CCELoss(LossModule):
 
         delta_z = delta_z.unsqueeze(-1)
 
-        stddev = (16.0 * delta_z).squeeze(-1)
+        stddev = (24.0 * delta_z).squeeze(-1)
         action_support_plus = action_support + delta_z / 2
         action_support_minus = action_support - delta_z / 2
         self.register_buffer("stddev", stddev.unsqueeze(-1))
