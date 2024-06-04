@@ -13,8 +13,8 @@ logger:
   backend: wandb
   mode: online
   project_name: policy_scale
-  group_name: a2c_ce_64_24
-  exp_name: a2c_ce_64_24
+  group_name: a2c_ce_64_075
+  exp_name: a2c_ce_64_075
   test_interval: 10_000
   num_test_episodes: 5
   video: False
