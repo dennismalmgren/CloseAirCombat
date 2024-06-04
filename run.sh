@@ -25,4 +25,4 @@ done
 # image is located here
 cd /proj/berzelius-aiics-real/users/x_denma/
 
-apptainer exec --env "WANDB_API_KEY=f832ecbebaa081e6438201bd475fe26f9f0b1d82" --nv -B ./projs/CloseAirCombat:/app berzdev_latest.sif python /app/scripts/patrol/torchrl_train_patrol_ppo_gpu.py
+apptainer exec --env "WANDB_API_KEY=f832ecbebaa081e6438201bd475fe26f9f0b1d82" --nv -B ./projs/CloseAirCombat:/app berzdev_latest.sif python -m app.a2c_bandit_ce.a2c_mujoco
