@@ -590,8 +590,9 @@ class A2CCELoss(LossModule):
         if self.loss_policy_type == "mse":
             log_probs_variance, dist_variance = self._log_probs_variance(tensordict)
             loss_mean, dist_mean = self._loss_mse_mean(tensordict)
-            loss = -(log_probs_variance * advantage) - (loss_mean * advantage)
-#            loss = -(loss_mean * advantage)
+#            loss = -(log_probs_variance * advantage) - (loss_mean * advantage)
+
+            loss = -(loss_mean * advantage)
         elif self.loss_policy_type == "cross_entropy":
             log_probs_variance, dist_variance = self._log_probs_variance(tensordict)
             loss_mean, dist_mean = self._loss_gauss_mean(tensordict)
