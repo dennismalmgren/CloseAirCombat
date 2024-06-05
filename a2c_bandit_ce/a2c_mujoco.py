@@ -5,7 +5,15 @@
 import hydra
 from torchrl._utils import logger as torchrl_logger
 from torchrl.record import VideoRecorder
+import torch
 
+def find_max_param_norm(parameters):
+    max_norm = 0
+    for param in parameters:
+        param_norm = torch.norm(param, p=2).item()
+        if param_norm > max_norm:
+            max_norm = param_norm
+    return max_norm
 
 @hydra.main(config_path="", config_name="config_mujoco", version_base="1.1")
 def main(cfg: "DictConfig"):  # noqa: F821
@@ -61,7 +69,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         gamma=cfg.loss.gamma,
         lmbda=cfg.loss.gae_lambda,
         value_network=critic,
-        average_gae=True,
+        average_gae=False,
     )
     loss_module = A2CCELoss(
         actor_network=actor,
@@ -74,8 +82,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
     )
 
     # Create optimizers
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr)
-    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr)
+    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr_policy)
+    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr_critic)
 
     # Create logger
     logger = None
@@ -134,6 +142,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
 
         losses = TensorDict({}, batch_size=[num_mini_batches])
         scales = TensorDict({}, batch_size=[num_mini_batches])
+        norms = TensorDict({}, batch_size=[num_mini_batches])
 
         training_start = time.time()
 
@@ -172,8 +181,18 @@ def main(cfg: "DictConfig"):  # noqa: F821
             # Backward pass
             actor_loss.backward()
             critic_loss.backward()
-            torch.nn.utils.clip_grad_norm_(actor.parameters(), cfg.optim.max_grad_norm)
-            torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
+#            grad_norm_actor = torch.nn.utils.clip_grad_norm_(actor.parameters(), cfg.optim.max_grad_norm)
+#            grad_norm_critic = torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
+            grad_norm_actor = torch.nn.utils.clip_grad_norm_(actor.parameters(), 1e6)
+            grad_norm_critic = torch.nn.utils.clip_grad_norm_(critic.parameters(), 1e6)          
+            max_param_norm_actor =  find_max_param_norm(actor.parameters())
+            max_param_norm_critic = find_max_param_norm(critic.parameters())
+            norms[k] = TensorDict({
+                    "grad_norm_actor": grad_norm_actor,
+                    "grad_norm_critic": grad_norm_critic,
+                    "max_param_norm_actor": max_param_norm_actor,
+                    "max_param_norm_critic": max_param_norm_critic
+                })
             # Update the networks
             actor_optim.step()
             critic_optim.step()
@@ -187,6 +206,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         scales_min = scales.apply(lambda x: x.float().min(), batch_size=[])
         scales_max = scales.apply(lambda x: x.float().max(), batch_size=[])
         scales_std = scales.apply(lambda x: x.float().std(), batch_size=[])
+        norms_mean = norms.apply(lambda x: x.float().mean(), batch_size=[])
 
         for key, value in losses.items():
             log_info.update({f"train/{key}": value.item()})
@@ -197,10 +217,13 @@ def main(cfg: "DictConfig"):  # noqa: F821
         for key, value in scales_max.items():
             log_info.update({f"train/{key}_max": value.item()})   
         for key, value in scales_std.items():
-            log_info.update({f"train/{key}_std": value.item()})                                            
+            log_info.update({f"train/{key}_std": value.item()})    
+        for key, value in norms_mean.items():
+            log_info.update({f"train/{key}": value.item()})
+
         log_info.update(
             {
-                "train/lr": alpha * cfg.optim.lr,
+                "train/lr": alpha * cfg.optim.lr_policy,
                 "train/sampling_time": sampling_time,
                 "train/training_time": training_time,
             }

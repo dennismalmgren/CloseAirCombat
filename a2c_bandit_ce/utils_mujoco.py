@@ -39,7 +39,7 @@ def make_env(
     env.append_transform(StepCounter())
     env.append_transform(VecNorm(in_keys=["observation"]))
     env.append_transform(ClipTransform(in_keys=["observation"], low=-10, high=10))
-    #env.append_transform(DoubleToFloat(in_keys=["observation"]))
+    env.append_transform(DoubleToFloat(in_keys=["observation"]))
     return env
 
 

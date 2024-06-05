@@ -1,7 +1,7 @@
 # task and env
 env:
-  env_name: CustomContinuousEnv-v0
-  #env_name: Hopper-v5
+  #env_name: CustomContinuousEnv-v0
+  env_name: Hopper-v5
 
 # collector
 collector:
@@ -12,9 +12,9 @@ collector:
 logger:
   backend: wandb
   mode: online
-  project_name: policy_bandit
-  group_name: a2c_mse_64_075
-  exp_name: a2c_mse_64_075
+  project_name: policy_discrete
+  group_name: a2c_ce_64_fixed
+  exp_name: a2c_ce_64_fixed
   test_interval: 1_000
   num_test_episodes: 5
   video: False
@@ -25,7 +25,8 @@ network:
 
 # Optim
 optim:
-  lr: 3e-4
+  lr_critic: 3e-3
+  lr_policy: 3e-4
   weight_decay: 0.0
   anneal_lr: False
   max_grad_norm: 1.0
@@ -35,9 +36,9 @@ loss:
   gamma: 0.99
   mini_batch_size: 64
   gae_lambda: 0.95
-  critic_coef: 0.25
+  critic_coef: 1.0
   entropy_coef: 0.0
   loss_critic_type: l2
-  loss_policy_type: mse #mse, cross_entropy, log_prob
+  loss_policy_type: cross_entropy #mse, cross_entropy, log_prob
 
  
