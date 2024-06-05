@@ -25,5 +25,6 @@ done
 # image is located here
 cd /proj/berzelius-aiics-real/users/x_denma/
 
-apptainer exec --env "WANDB_API_KEY=f832ecbebaa081e6438201bd475fe26f9f0b1d82" --nv -B ./projs/CloseAirCombat:/app berzdev_latest.sif bash -c "cd /app && python -m a2c_bandit_ce.a2c_mujoco logger.group_name=a2c_ce_64 logger.exp_name=a2c_ce_64 loss.loss_policy_type=cross_entropy"
+#apptainer exec --env "WANDB_API_KEY=f832ecbebaa081e6438201bd475fe26f9f0b1d82" --nv -B ./projs/CloseAirCombat:/app berzdev_latest.sif bash -c "cd /app && python -m a2c_bandit_ce.a2c_mujoco logger.group_name=a2c_ce_64 logger.exp_name=a2c_ce_64 loss.loss_policy_type=cross_entropy"
+apptainer exec --env "WANDB_API_KEY=f832ecbebaa081e6438201bd475fe26f9f0b1d82" --nv -B ./projs/CloseAirCombat:/app berzdev_latest.sif bash -c "cd /app && python -m a2c_bandit_ce.a2c_mujoco"
 #apptainer exec --env "WANDB_API_KEY=f832ecbebaa081e6438201bd475fe26f9f0b1d82" --nv -B ./projs/CloseAirCombat:/app berzdev_latest.sif bash -c "cd /app && python -m a2c.a2c_mujoco"

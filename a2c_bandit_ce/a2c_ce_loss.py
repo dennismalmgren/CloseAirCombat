@@ -440,7 +440,13 @@ class A2CCELoss(LossModule):
                 dist_params['scale'] = dist_params['scale'].detach()
                 dist = self.actor_network.build_dist_from_params(dist_params)
             action_inverted = dist._t.inv(action)
-            mse_loss = - 0.5 * torch.nn.functional.mse_loss(action_inverted, dist.loc, reduction='none')
+            max_dist = 0.1 #one 'step' in the support
+            delta = (action_inverted - dist.loc.detach())
+            action_inverted_target_distance = torch.abs(delta)
+            dist_scale = torch.min(torch.tensor(1.0, device=delta.device), max_dist / action_inverted_target_distance)
+
+            mse_loss = - 0.5 * torch.nn.functional.mse_loss(dist.loc, dist.loc.detach() + dist_scale * delta, reduction='none')
+           # mse_loss = - 0.5 * torch.nn.functional.mse_loss(dist.loc, action_inverted, reduction='none')
             mse_loss_scaled = mse_loss / (dist.scale **2)
             return mse_loss_scaled, dist
 
