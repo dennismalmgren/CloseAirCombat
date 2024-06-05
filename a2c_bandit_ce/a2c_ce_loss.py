@@ -401,9 +401,15 @@ class A2CCELoss(LossModule):
         return entropy.unsqueeze(-1)
 
     def _construct_gauss_target(
-            self, action
+            self, action, dist
     ):
-        action = action.clamp(self.action_min, self.action_max) #todo: be flexible about dimensions
+        max_dist = 0.1 #one 'step' in the support
+        delta = (action - dist.loc.detach())
+        action_inverted_target_distance = torch.abs(delta)
+        dist_scale = torch.min(torch.tensor(1.0, device=delta.device), max_dist / action_inverted_target_distance)
+        action = dist.loc.detach() + dist_scale * delta
+        action = action.clamp(self.action_min, self.action_max)
+
         action_atoms = action.unsqueeze(-1)
         stddev_expanded = self.stddev.expand_as(action_atoms)
         action_support_plus = self.action_support_plus.expand(action.shape[0], *self.action_support_plus.shape[1:])
@@ -440,7 +446,13 @@ class A2CCELoss(LossModule):
                 dist_params['scale'] = dist_params['scale'].detach()
                 dist = self.actor_network.build_dist_from_params(dist_params)
             action_inverted = dist._t.inv(action)
-            mse_loss = - 0.5 * torch.nn.functional.mse_loss(action_inverted, dist.loc, reduction='none')
+            max_dist = 0.1 #one 'step' in the support
+            delta = (action_inverted - dist.loc.detach())
+            action_inverted_target_distance = torch.abs(delta)
+            dist_scale = torch.min(torch.tensor(1.0, device=delta.device), max_dist / action_inverted_target_distance)
+
+            mse_loss = - 0.5 * torch.nn.functional.mse_loss(dist.loc, dist.loc.detach() + dist_scale * delta, reduction='none')
+           # mse_loss = - 0.5 * torch.nn.functional.mse_loss(dist.loc, action_inverted, reduction='none')
             mse_loss_scaled = mse_loss / (dist.scale **2)
             return mse_loss_scaled, dist
 
@@ -465,7 +477,7 @@ class A2CCELoss(LossModule):
                 dist_logits = dist_params['loc_logits']
                 #dist_logits = dist_logits.reshape(*dist_logits.shape[:-1], -1, self.support.shape[-1])
             action_inverted = dist._t._inverse(action)
-            target_dist = self._construct_gauss_target(action_inverted).reshape(-1, self.action_support.shape[-1])
+            target_dist = self._construct_gauss_target(action_inverted, dist).reshape(-1, self.action_support.shape[-1])
             dist_logits = dist_logits.reshape(-1, self.action_support.shape[-1])
             ce_loss = torch.nn.functional.cross_entropy(dist_logits, target_dist, reduction='none').unsqueeze(-1)
             ce_loss = ce_loss.reshape_as(dist.loc)
