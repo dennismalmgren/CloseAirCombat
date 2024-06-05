@@ -60,7 +60,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         gamma=cfg.loss.gamma,
         lmbda=cfg.loss.gae_lambda,
         value_network=critic,
-        average_gae=False,
+        average_gae=True,
     )
     loss_module = A2CLoss(
         actor_network=actor,
