@@ -1,6 +1,7 @@
 # task and env
 env:
-  env_name: Hopper-v5
+  #env_name: Hopper-v5
+  env_name: CustomContinuousEnv-v0
 
 # collector
 collector:
@@ -11,7 +12,7 @@ collector:
 logger:
   backend: wandb
   mode: online
-  project_name: policy_scale
+  project_name: policy_bandit
   group_name: a2c_64
   exp_name: a2c_64
   test_interval: 10_000

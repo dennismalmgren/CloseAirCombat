@@ -335,7 +335,7 @@ class A2CCELoss(LossModule):
 
         delta_z = delta_z.unsqueeze(-1)
 
-        stddev = (12.0 * delta_z).squeeze(-1)
+        stddev = (0.75 * delta_z).squeeze(-1)
         action_support_plus = action_support + delta_z / 2
         action_support_minus = action_support - delta_z / 2
         self.register_buffer("stddev", stddev.unsqueeze(-1))
@@ -586,12 +586,15 @@ class A2CCELoss(LossModule):
                 target_params=self.target_critic_network_params,
             )
             advantage = tensordict.get(self.tensor_keys.advantage)
+        #advantage = torch.clamp(advantage, -10.0, 10.0)
+        advantage = torch.tanh(advantage) 
         assert not advantage.requires_grad
         if self.loss_policy_type == "mse":
             log_probs_variance, dist_variance = self._log_probs_variance(tensordict)
             loss_mean, dist_mean = self._loss_mse_mean(tensordict)
-            loss = -(log_probs_variance * advantage) - (loss_mean * advantage)
-#            loss = -(loss_mean * advantage)
+#            loss = -(log_probs_variance * advantage) - (loss_mean * advantage)
+
+            loss = -(loss_mean * advantage)
         elif self.loss_policy_type == "cross_entropy":
             log_probs_variance, dist_variance = self._log_probs_variance(tensordict)
             loss_mean, dist_mean = self._loss_gauss_mean(tensordict)

@@ -155,7 +155,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
                 for group in critic_optim.param_groups:
                     group["lr"] = cfg.optim.lr * alpha
             num_network_updates += 1
-
+            data['scale'] = data['scale'].detach()
             # Forward pass A2C loss
             loss = loss_module(batch)
             losses[k] = loss.select(
