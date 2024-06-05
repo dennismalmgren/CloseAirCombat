@@ -587,7 +587,7 @@ class A2CCELoss(LossModule):
             )
             advantage = tensordict.get(self.tensor_keys.advantage)
         #advantage = torch.clamp(advantage, -10.0, 10.0)
-        advantage = torch.sigmoid(advantage)
+        advantage = torch.tanh(advantage) 
         assert not advantage.requires_grad
         if self.loss_policy_type == "mse":
             log_probs_variance, dist_variance = self._log_probs_variance(tensordict)
