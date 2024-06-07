@@ -13,8 +13,8 @@ logger:
   backend: wandb
   mode: disabled
   project_name: policy_discrete
-  group_name: a2c_mse_64_fixed
-  exp_name: a2c_mse_64_fixed
+  group_name: a2c_ce_64_fixed
+  exp_name: a2c_ce_64_fixed
   test_interval: 1_000
   num_test_episodes: 5
   video: False
@@ -39,6 +39,6 @@ loss:
   critic_coef: 1.0
   entropy_coef: 0.0
   loss_critic_type: l2
-  loss_policy_type: mse #mse, cross_entropy, log_prob
+  loss_policy_type: cross_entropy #mse, cross_entropy, log_prob
 
  
