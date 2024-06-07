@@ -69,7 +69,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         gamma=cfg.loss.gamma,
         lmbda=cfg.loss.gae_lambda,
         value_network=critic,
-        average_gae=False,
+        average_gae=True,
     )
     loss_module = A2CCELoss(
         actor_network=actor,
@@ -172,7 +172,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             # Forward pass A2C loss
             loss = loss_module(batch)
             losses[k] = loss.select(
-                "loss_critic", "loss_objective"  # , "loss_entropy"
+                "loss_critic", "loss_objective",  "loss_distance" # , "loss_entropy"
             ).detach()
             critic_loss = loss["loss_critic"]
             actor_loss = loss["loss_objective"]  # + loss["loss_entropy"]

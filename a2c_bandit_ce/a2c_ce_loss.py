@@ -403,11 +403,12 @@ class A2CCELoss(LossModule):
     def _construct_gauss_target(
             self, action, dist
     ):
-        max_dist = 0.1 #one 'step' in the support
+        #max_dist = 0.2 #one 'step' in the support
         delta = (action - dist.loc.detach())
-        action_inverted_target_distance = torch.abs(delta)
-        dist_scale = torch.min(torch.tensor(1.0, device=delta.device), max_dist / action_inverted_target_distance)
-        action = dist.loc.detach() + dist_scale * delta
+        delta = 0.01 * delta
+        #action_inverted_target_distance = torch.abs(delta).max()
+        #dist_scale = torch.min(torch.tensor(1.0, device=delta.device), max_dist / action_inverted_target_distance)
+        action = dist.loc.detach() + delta
         action = action.clamp(self.action_min, self.action_max)
 
         action_atoms = action.unsqueeze(-1)
@@ -446,15 +447,15 @@ class A2CCELoss(LossModule):
                 dist_params['scale'] = dist_params['scale'].detach()
                 dist = self.actor_network.build_dist_from_params(dist_params)
             action_inverted = dist._t.inv(action)
-            max_dist = 0.1 #one 'step' in the support
+            #max_dist = 0.1 #one 'step' in the support
             delta = (action_inverted - dist.loc.detach())
             action_inverted_target_distance = torch.abs(delta)
-            dist_scale = torch.min(torch.tensor(1.0, device=delta.device), max_dist / action_inverted_target_distance)
+            #dist_scale = torch.min(torch.tensor(1.0, device=delta.device), max_dist / action_inverted_target_distance)
 
-            mse_loss = - 0.5 * torch.nn.functional.mse_loss(dist.loc, dist.loc.detach() + dist_scale * delta, reduction='none')
-           # mse_loss = - 0.5 * torch.nn.functional.mse_loss(dist.loc, action_inverted, reduction='none')
+            #mse_loss = - 0.5 * torch.nn.functional.mse_loss(dist.loc, dist.loc.detach() + dist_scale * delta, reduction='none')
+            mse_loss = - 0.5 * torch.nn.functional.mse_loss(dist.loc, action_inverted, reduction='none')
             mse_loss_scaled = mse_loss / (dist.scale **2)
-            return mse_loss_scaled, dist
+            return mse_loss_scaled, dist, action_inverted_target_distance
 
     def _loss_gauss_mean(
             self, tensordict: TensorDictBase
@@ -477,6 +478,10 @@ class A2CCELoss(LossModule):
                 dist_logits = dist_params['loc_logits']
                 #dist_logits = dist_logits.reshape(*dist_logits.shape[:-1], -1, self.support.shape[-1])
             action_inverted = dist._t._inverse(action)
+
+            delta = (action_inverted - dist.loc.detach())
+            action_inverted_target_distance = torch.abs(delta)
+
             target_dist = self._construct_gauss_target(action_inverted, dist).reshape(-1, self.action_support.shape[-1])
             dist_logits = dist_logits.reshape(-1, self.action_support.shape[-1])
             ce_loss = torch.nn.functional.cross_entropy(dist_logits, target_dist, reduction='none').unsqueeze(-1)
@@ -487,7 +492,7 @@ class A2CCELoss(LossModule):
             #mse_loss = - 0.5 * torch.nn.functional.mse_loss(action_inverted, dist.loc, reduction='none')
             #mse_loss_scaled = mse_loss / (dist.scale **2)
             #return mse_loss_scaled, dist
-            return ce_loss, dist
+            return ce_loss, dist, action_inverted_target_distance
     
     def _log_probs_variance(
             self, tensordict: TensorDictBase
@@ -599,17 +604,17 @@ class A2CCELoss(LossModule):
             )
             advantage = tensordict.get(self.tensor_keys.advantage)
         #advantage = torch.clamp(advantage, -10.0, 10.0)
-        advantage = torch.tanh(advantage) 
+        #advantage = torch.tanh(advantage) 
         assert not advantage.requires_grad
         if self.loss_policy_type == "mse":
             log_probs_variance, dist_variance = self._log_probs_variance(tensordict)
-            loss_mean, dist_mean = self._loss_mse_mean(tensordict)
+            loss_mean, dist_mean, action_inverted_target_distance = self._loss_mse_mean(tensordict)
 #            loss = -(log_probs_variance * advantage) - (loss_mean * advantage)
 
             loss = -(loss_mean * advantage)
         elif self.loss_policy_type == "cross_entropy":
             log_probs_variance, dist_variance = self._log_probs_variance(tensordict)
-            loss_mean, dist_mean = self._loss_gauss_mean(tensordict)
+            loss_mean, dist_mean, action_inverted_target_distance = self._loss_gauss_mean(tensordict)
             #loss = -(log_probs_variance * advantage) - (loss_mean * advantage)
             loss = - (loss_mean * advantage)
         elif self.loss_policy_type == "log_prob":
@@ -617,6 +622,7 @@ class A2CCELoss(LossModule):
             loss = -(log_prob * advantage)
 
         td_out = TensorDict({"loss_objective": loss}, batch_size=[])
+        td_out.set("loss_distance", action_inverted_target_distance.mean())
         if self.entropy_bonus: 
             entropy = self.get_entropy_bonus(dist) #todo :support entropy bonus for mse/ce loss
             td_out.set("entropy", entropy.detach().mean())  # for logging
