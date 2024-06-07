@@ -7,7 +7,8 @@ import numpy as np
 import torch.nn
 import torch.optim
 
-from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
+#from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
+from tensordict.nn import TensorDictModule
 from torchrl.data import CompositeSpec
 from torchrl.envs import (
     ClipTransform,
@@ -23,6 +24,7 @@ from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.record import VideoRecorder
 from .dropout_modules import ConsistentDropout, ConsistentDropoutModule
 from .bandit_gym import CustomContinuousEnv
+from .addstateindependentnormalscale import AddStateIndependentNormalScale
 
 # ====================================================================
 # Environment utils
@@ -40,7 +42,7 @@ def make_env(
     env.append_transform(StepCounter())
     env.append_transform(VecNorm(in_keys=["observation"]))
     env.append_transform(ClipTransform(in_keys=["observation"], low=-10, high=10))
-    #env.append_transform(DoubleToFloat(in_keys=["observation"]))
+    env.append_transform(DoubleToFloat(in_keys=["observation"]))
     return env
 
 
