@@ -404,11 +404,11 @@ class A2CCELoss(LossModule):
             self, action, dist
     ):
         #max_dist = 0.2 #one 'step' in the support
-        delta = (action - dist.loc.detach())
-        delta = 0.01 * delta
+        #delta = (action - dist.loc.detach())
+        #delta = 0.01 * delta
         #action_inverted_target_distance = torch.abs(delta).max()
         #dist_scale = torch.min(torch.tensor(1.0, device=delta.device), max_dist / action_inverted_target_distance)
-        action = dist.loc.detach() + delta
+        #action = dist.loc.detach() + delta
         action = action.clamp(self.action_min, self.action_max)
 
         action_atoms = action.unsqueeze(-1)

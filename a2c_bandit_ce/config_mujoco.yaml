@@ -11,10 +11,10 @@ collector:
 # logger
 logger:
   backend: wandb
-  mode: online
+  mode: disabled
   project_name: policy_discrete
-  group_name: a2c_ce_64_fixed
-  exp_name: a2c_ce_64_fixed
+  group_name: a2c_mse_64_fixed
+  exp_name: a2c_mse_64_fixed
   test_interval: 1_000
   num_test_episodes: 5
   video: False
@@ -26,7 +26,7 @@ network:
 # Optim
 optim:
   lr_critic: 3e-4
-  lr_policy: 3e-3
+  lr_policy: 3e-4
   weight_decay: 0.0
   anneal_lr: False
   max_grad_norm: 1.0
@@ -39,6 +39,6 @@ loss:
   critic_coef: 1.0
   entropy_coef: 0.0
   loss_critic_type: l2
-  loss_policy_type: cross_entropy #mse, cross_entropy, log_prob
+  loss_policy_type: mse #mse, cross_entropy, log_prob
 
  

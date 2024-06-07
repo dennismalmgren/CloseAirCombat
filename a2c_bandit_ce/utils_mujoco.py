@@ -7,7 +7,8 @@ import numpy as np
 import torch.nn
 import torch.optim
 
-from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule, TensorDictSequential
+#from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule, TensorDictSequential
+from tensordict.nn import TensorDictModule, TensorDictSequential
 from torchrl.data import CompositeSpec
 from torchrl.envs import (
     ClipTransform,
@@ -22,6 +23,7 @@ from torchrl.envs.libs.gym import GymEnv
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.record import VideoRecorder
 from .bandit_gym import CustomContinuousEnv
+from .addstateindependentnormalscale import AddStateIndependentNormalScale
 
 # ====================================================================
 # Environment utils
