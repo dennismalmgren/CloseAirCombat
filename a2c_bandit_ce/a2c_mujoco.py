@@ -69,7 +69,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
         gamma=cfg.loss.gamma,
         lmbda=cfg.loss.gae_lambda,
         value_network=critic,
-        average_gae=True,
+        average_gae=False,
     )
     loss_module = A2CCELoss(
         actor_network=actor,
@@ -82,8 +82,8 @@ def main(cfg: "DictConfig"):  # noqa: F821
     )
 
     # Create optimizers
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr_policy)
-    critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr_critic)
+    actor_optim = torch.optim.AdamW(actor.parameters(), lr=cfg.optim.lr_policy, eps=1e-5)
+    critic_optim = torch.optim.AdamW(critic.parameters(), lr=cfg.optim.lr_critic, eps=1e-5)
 
     # Create logger
     logger = None
@@ -185,6 +185,9 @@ def main(cfg: "DictConfig"):  # noqa: F821
 #            grad_norm_critic = torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
             grad_norm_actor = torch.nn.utils.clip_grad_norm_(actor.parameters(), 1e6)
             grad_norm_critic = torch.nn.utils.clip_grad_norm_(critic.parameters(), 1e6)          
+            for p in actor.parameters():
+                if p.grad is not None:
+                    p.grad = p.grad / (p.grad.norm() + 1e-6)
             max_param_norm_actor =  find_max_param_norm(actor.parameters())
             max_param_norm_critic = find_max_param_norm(critic.parameters())
             norms[k] = TensorDict({
