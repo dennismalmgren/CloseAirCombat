@@ -487,7 +487,7 @@ class A2CCELoss(LossModule):
             ce_loss = torch.nn.functional.cross_entropy(dist_logits, target_dist, reduction='none').unsqueeze(-1)
             ce_loss = ce_loss.reshape_as(dist.loc)
             #ce_loss = -0.00005 * ce_loss *  1 / (dist.scale ** 2)
-            ce_loss = -0.5 * ce_loss *  1 / (dist.scale ** 2)
+            ce_loss = -0.0005 * ce_loss *  1 / (dist.scale ** 2)
             ce_loss = ce_loss.sum(-1, keepdim=True)
             #mse_loss = - 0.5 * torch.nn.functional.mse_loss(action_inverted, dist.loc, reduction='none')
             #mse_loss_scaled = mse_loss / (dist.scale **2)
