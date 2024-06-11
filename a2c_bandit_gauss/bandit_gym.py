@@ -25,7 +25,12 @@ class CustomContinuousEnv(gymnasium.Env):
         action = action[0]  # Extract the action value from the action array
 
         reward1 = max(0.0, 2 * (0.5 - abs(action - self.target_point0)))
+        if reward1 > 0:
+            reward1 = np.random.normal(reward1, 0.1)
+        
         reward2 = max(0.0, 2 * (0.5 - abs(action - self.target_point1)))
+        if reward2 > 0:
+            reward2 = np.random.normal(reward2, 0.1)
         reward = reward1 + reward2
         # Observation is always zero
         observation = np.zeros(1, dtype=np.float32)
