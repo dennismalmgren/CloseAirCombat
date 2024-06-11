@@ -180,27 +180,28 @@ def main(cfg: "DictConfig"):  # noqa: F821
 
             # Backward pass
             actor_loss.backward()
-            critic_loss.backward()
-#            grad_norm_actor = torch.nn.utils.clip_grad_norm_(actor.parameters(), cfg.optim.max_grad_norm)
-#            grad_norm_critic = torch.nn.utils.clip_grad_norm_(critic.parameters(), cfg.optim.max_grad_norm)
             grad_norm_actor = torch.nn.utils.clip_grad_norm_(actor.parameters(), 1e6)
-            grad_norm_critic = torch.nn.utils.clip_grad_norm_(critic.parameters(), 1e6)          
-            for p in actor.parameters():
-                if p.grad is not None:
-                    p.grad = p.grad / (p.grad.norm() + 1e-6)
+            # for p in actor.parameters():
+            #    if p.grad is not None:
+            #        p.grad = p.grad / (p.grad.norm() + 1e-6)
             max_param_norm_actor =  find_max_param_norm(actor.parameters())
+
+            critic_loss.backward()
+            grad_norm_critic = torch.nn.utils.clip_grad_norm_(critic.parameters(), 1e6)          
             max_param_norm_critic = find_max_param_norm(critic.parameters())
+            # Update the networks
+            if i % 2 == 0:
+                actor_optim.step()
+            actor_optim.zero_grad()
+            critic_optim.step()
+            critic_optim.zero_grad()
+
             norms[k] = TensorDict({
                     "grad_norm_actor": grad_norm_actor,
                     "grad_norm_critic": grad_norm_critic,
                     "max_param_norm_actor": max_param_norm_actor,
                     "max_param_norm_critic": max_param_norm_critic
                 })
-            # Update the networks
-            actor_optim.step()
-            critic_optim.step()
-            actor_optim.zero_grad()
-            critic_optim.zero_grad()
 
         # Get training losses
         training_time = time.time() - training_start

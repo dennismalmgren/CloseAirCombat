@@ -25,6 +25,7 @@ from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.record import VideoRecorder
 from .bandit_gym import CustomContinuousEnv
 from .addstateindependentnormalscale import AddStateIndependentNormalScale
+from torch.nn.utils.parametrizations import spectral_norm
 
 # ====================================================================
 # Environment utils
@@ -58,9 +59,16 @@ class SupportOperator(torch.nn.Module):
     def forward(self, x):
         x = x.reshape(*x.shape[:-1], *self.support.shape)
         return (x.softmax(-1) * self.support).sum(-1)
+    
+class SpectralNormLinear(torch.nn.Module):
+    def __init__(self, in_features, out_features, bias=True, device=None, dtype=None):
+        super().__init__()
+        self.linear = torch.nn.Linear(in_features, out_features, bias, device, dtype)
+        self.linear = spectral_norm(self.linear)
 
-
-
+    def forward(self, x):
+        return self.linear(x)
+    
 def make_ppo_models_state(proof_environment, cfg):
 
     # Define input shape
@@ -141,12 +149,14 @@ def make_ppo_models_state(proof_environment, cfg):
         default_interaction_type=ExplorationType.RANDOM,
     )
 
+    
     # Define value architecture
     value_mlp = MLP(
         in_features=input_shape[-1],
         activation_class=torch.nn.Tanh,
         out_features=1,
         num_cells=[64, 64],
+       # layer_class=SpectralNormLinear
     )
 
     # Initialize value weights
