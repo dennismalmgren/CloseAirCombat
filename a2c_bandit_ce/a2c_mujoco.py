@@ -181,9 +181,9 @@ def main(cfg: "DictConfig"):  # noqa: F821
             # Backward pass
             actor_loss.backward()
             grad_norm_actor = torch.nn.utils.clip_grad_norm_(actor.parameters(), 1e6)
-            # for p in actor.parameters():
-            #    if p.grad is not None:
-            #        p.grad = p.grad / (p.grad.norm() + 1e-6)
+            for p in actor.parameters():
+               if p.grad is not None:
+                   p.grad = p.grad / (p.grad.norm() + 1e-6)
             max_param_norm_actor =  find_max_param_norm(actor.parameters())
 
             critic_loss.backward()
