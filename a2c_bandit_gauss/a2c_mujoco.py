@@ -184,7 +184,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
 
             # Backward pass
             actor_loss.backward()
-            grad_norm_actor = torch.nn.utils.clip_grad_norm_(actor.parameters(), 1e6)
+            grad_norm_actor = torch.nn.utils.clip_grad_norm_(actor.parameters(), 1.0)
             # for p in actor.parameters():
             #    if p.grad is not None:
             #        p.grad = p.grad / (p.grad.norm() + 1e-6)
@@ -194,7 +194,7 @@ def main(cfg: "DictConfig"):  # noqa: F821
             grad_norm_critic = torch.nn.utils.clip_grad_norm_(critic.parameters(), 1e6)          
             max_param_norm_critic = find_max_param_norm(critic.parameters())
             # Update the networks
-            #if i % 1 == 0:
+            #if i % 2 == 0:
             actor_optim.step()
             actor_optim.zero_grad()
             critic_optim.step()

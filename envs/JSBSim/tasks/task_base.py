@@ -76,6 +76,21 @@ class BaseTask(ABC):
         """
         return ["reward"] + [reward_item_name for reward_function in self.reward_functions for reward_item_name in reward_function.reward_item_names]
     
+    def get_logged_reward_keys(self):
+        """Get reward keys
+
+        Returns:
+            (list): reward keys
+        """
+        return ["reward"] + [reward_item_name for reward_function in self.logged_reward_functions for reward_item_name in reward_function.reward_item_names]
+    
+    def get_logged_reward(self, env, agent_id, info={}) -> Tuple[float, dict]:
+        reward = 0.0
+        for reward_function in self.logged_reward_functions:
+            func_reward = reward_function.get_reward(self, env, agent_id)
+            reward += func_reward
+        return reward, info
+
     def get_reward(self, env, agent_id, info={}) -> Tuple[float, dict]:
         """
         Aggregate reward functions

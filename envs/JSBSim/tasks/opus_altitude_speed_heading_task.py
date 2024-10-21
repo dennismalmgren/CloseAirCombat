@@ -5,7 +5,8 @@ from ..core.catalog import Catalog as c
 from ..reward_functions import (
     SafeAltitudeReward, 
     OpusAltitudeSpeedHeadingReward,
-    OpusAltitudeReward
+    OpusAltitudeReward,
+    OpusOnlySmoothingReward
 )
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout
 from ..utils.utils import LLA2NED, NED2LLA
@@ -22,6 +23,10 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
         self.reward_functions = [
             OpusAltitudeSpeedHeadingReward(self.config),
             SafeAltitudeReward(self.config),
+        ]
+
+        self.logged_reward_functions = [
+            OpusOnlySmoothingReward(self.config),
         ]
 
         self.termination_conditions = [
@@ -79,7 +84,9 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
 
     def reset(self, env):
         super().reset(env)
-        self.reset_smoothness(env)
+        self.step_num = 1
+        self.reset_task_history(env)
+        #self.reset_smoothness(env)
         for agent_id in env.agents:
             agent = env.agents[agent_id]
             current_altitude = agent.get_property_value(c.position_h_sl_m)
@@ -92,52 +99,18 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
 
     def step(self, env):
         super().step(env)
-        self.step_smoothness(env)
-
-    def step_smoothness(self, env):
-        for agent_id in env.agents:
-            agent = env.agents[agent_id]
-            self.smoothness_u[agent_id][:4] = self.smoothness_u[agent_id][1:]
-            self.smoothness_v[agent_id][:4] = self.smoothness_v[agent_id][1:]
-            self.smoothness_w[agent_id][:4] = self.smoothness_w[agent_id][1:]
-            self.smoothness_p[agent_id][:4] = self.smoothness_p[agent_id][1:]
-            self.smoothness_q[agent_id][:4] = self.smoothness_q[agent_id][1:]
-            self.smoothness_r[agent_id][:4] = self.smoothness_r[agent_id][1:]
-            self.smoothness_u[agent_id][4] = agent.get_property_value(c.accelerations_udot_ft_sec2) * 0.3048
-            self.smoothness_v[agent_id][4] = agent.get_property_value(c.accelerations_vdot_ft_sec2) * 0.3048
-            self.smoothness_w[agent_id][4] = agent.get_property_value(c.accelerations_wdot_ft_sec2) * 0.3048
-            self.smoothness_p[agent_id][4] = agent.get_property_value(c.accelerations_pdot_rad_sec2)
-            self.smoothness_q[agent_id][4] = agent.get_property_value(c.accelerations_qdot_rad_sec2)
-            self.smoothness_r[agent_id][4] = agent.get_property_value(c.accelerations_rdot_rad_sec2)
+        self.step_task_history(env)
         self.step_num += 1
 
-    def reset_smoothness(self, env):
-        self.step_num = 0
-        self.smoothness_u = {agent_id: np.zeros(5) for agent_id in env.agents}
-        self.smoothness_v = {agent_id: np.zeros(5) for agent_id in env.agents}
-        self.smoothness_w = {agent_id: np.zeros(5) for agent_id in env.agents}
-        self.smoothness_p = {agent_id: np.zeros(5) for agent_id in env.agents}
-        self.smoothness_q = {agent_id: np.zeros(5) for agent_id in env.agents}
-        self.smoothness_r = {agent_id: np.zeros(5) for agent_id in env.agents}
-
-    def calculate_smoothness(self, env, agent_id):
-        if self.step_num < 5:
-            return np.zeros(6)
-        smoothness_u = self.smoothness_u[agent_id]
-        smoothness_v = self.smoothness_v[agent_id]
-        smoothness_w = self.smoothness_w[agent_id]
-        smoothness_p = self.smoothness_p[agent_id]
-        smoothness_q = self.smoothness_q[agent_id]
-        smoothness_r = self.smoothness_r[agent_id]
-        #this is the second derivatives. we derive 4 third derivatives
-        smoothness_u = np.diff(smoothness_u, n=4)
-        smoothness_v = np.diff(smoothness_v, n=4)
-        smoothness_w = np.diff(smoothness_w, n=4)
-        smoothness_p = np.diff(smoothness_p, n=4)
-        smoothness_q = np.diff(smoothness_q, n=4)
-        smoothness_r = np.diff(smoothness_r, n=4)
-        return np.array([smoothness_u, smoothness_v, smoothness_w, smoothness_p, smoothness_q, smoothness_r])
-    
+    def reset_task_history(self, env):
+        self.p_history = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.q_history = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.r_history = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.pdot_history = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.qdot_history = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.rdot_history = {agent_id: np.zeros(5) for agent_id in env.agents}
+        self.step_task_history(env)
+        
     def calculate_task_variables(self, env, agent_id):
         agent = env.agents[agent_id]
         #construct the heading task observation.
@@ -158,6 +131,30 @@ class OpusAltitudeSpeedHeadingTask(BaseTask):
         current_heading = self.state_prop_vals[8]
         delta_heading = target_heading - current_heading
         return np.asarray([delta_altitude, delta_roll, delta_speed, delta_heading])
+    
+    def step_task_history(self, env):
+        for agent_id in env.agents:
+            agent = env.agents[agent_id]
+            self.p_history[agent_id][:4] = self.p_history[agent_id][1:]   
+            self.p_history[agent_id][4] = agent.get_property_value(c.attitude_phi_rad)
+            self.q_history[agent_id][:4] = self.q_history[agent_id][1:]
+            self.q_history[agent_id][4] = agent.get_property_value(c.attitude_theta_rad)
+            self.r_history[agent_id][:4] = self.r_history[agent_id][1:]
+            self.r_history[agent_id][4] = agent.get_property_value(c.attitude_psi_rad)
+            self.pdot_history[agent_id][:4] = self.pdot_history[agent_id][1:]
+            self.pdot_history[agent_id][4] = agent.get_property_value(c.velocities_p_rad_sec)
+            self.qdot_history[agent_id][:4] = self.qdot_history[agent_id][1:]
+            self.qdot_history[agent_id][4] = agent.get_property_value(c.velocities_q_rad_sec)
+            self.rdot_history[agent_id][:4] = self.rdot_history[agent_id][1:]
+            self.rdot_history[agent_id][4] = agent.get_property_value(c.velocities_r_rad_sec)
+            
+    def get_task_history_variables(self, env, agent_id):
+        return np.array([self.p_history[agent_id][-self.step_num:], 
+                         self.q_history[agent_id][-self.step_num:],
+                         self.r_history[agent_id][-self.step_num:],
+                         self.pdot_history[agent_id][-self.step_num:],
+                         self.qdot_history[agent_id][-self.step_num:],
+                         self.rdot_history[agent_id][-self.step_num:]])
 
     def quaternion_multiply(self, quaternion1, quaternion0):
         w0, x0, y0, z0 = quaternion0

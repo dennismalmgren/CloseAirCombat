@@ -173,10 +173,10 @@ def create_value_module(proof_environment, cfg):
         if isinstance(layer, torch.nn.Linear):
             torch.nn.init.orthogonal_(layer.weight, 0.01)
             layer.bias.data.zero_()
-    last_layer = value_mlp[-1]
+    #last_layer = value_mlp[-1]
 
-    bias_data = torch.tensor([-0.01] * (5) + [-100.0] * (nbins - (5)))
-    last_layer.bias.data = bias_data
+    #bias_data = torch.tensor([-0.01] * (5) + [-100.0] * (nbins - (5)))
+    #last_layer.bias.data = bias_data
 
     in_keys = ["observation"]
     value_module_1 = TensorDictModule(

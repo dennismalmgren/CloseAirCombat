@@ -45,27 +45,24 @@ class OpusCurriculum(BaseCurriculum):
 
         self.heading_turn_counts = 0
 
-        if np.random.rand() < 0.2:
-            self.include_turns_episode = True
-        else:
-            self.include_turns_episode = False
+        self.include_turns_episode = True
         #self.include_turns_episode = True
-        # for agent_id in env.agents:
-        #     agent = env.agents[agent_id]
-        #     current_heading_rad = agent.get_property_value(c.attitude_heading_true_rad) 
-        #     current_speed = agent.get_property_value(c.velocities_vc_mps) 
-        #     #current_time = agent.get_property_value(c.simulation_sim_time_sec) #will be at least.
-        #     #also: set task values so that they can be returned by reset.
-        #     #todo: move reset to the task.
-        #     #agent.set_property_value(c.missions_cruise_target_attitude_heading_true_rad, current_heading_rad)
-        #     #agent.set_property_value(c.missions_cruise_target_velocities_vc_mps, current_speed)
-        #    # agent.set_property_value(c.travel_1_target_time_s, (self.check_interval + current_time))
-        #     self.task.reset(env, agent_id)
+        for agent_id in env.agents:
+            agent = env.agents[agent_id]
+            current_heading_rad = agent.get_property_value(c.attitude_heading_true_rad) 
+            current_speed = agent.get_property_value(c.velocities_vc_mps) 
+            #current_time = agent.get_property_value(c.simulation_sim_time_sec) #will be at least.
+            #also: set task values so that they can be returned by reset.
+            #todo: move reset to the task.
+            #agent.set_property_value(c.missions_cruise_target_attitude_heading_true_rad, current_heading_rad)
+            #agent.set_property_value(c.missions_cruise_target_velocities_vc_mps, current_speed)
+           # agent.set_property_value(c.travel_1_target_time_s, (self.check_interval + current_time))
+            self.task.reset(env)
 
     def load_task(self):
         #taskname = getattr(self.config, 'task', None)
-        #self.task = OpusAltitudeSpeedHeadingTask(self.config)
-        self.task = OpusSmoothingTask(self.config)
+        self.task = OpusAltitudeSpeedHeadingTask(self.config)
+        #self.task = OpusSmoothingTask(self.config)
         #self.task = OpusAltitudeTask(self.config)
         return self.task
     
