@@ -61,8 +61,8 @@ class OpusCurriculum(BaseCurriculum):
 
     def load_task(self):
         #taskname = getattr(self.config, 'task', None)
-        self.task = OpusAltitudeSpeedHeadingTask(self.config)
-        #self.task = OpusSmoothingTask(self.config)
+        #self.task = OpusAltitudeSpeedHeadingTask(self.config)
+        self.task = OpusSmoothingTask(self.config)
         #self.task = OpusAltitudeTask(self.config)
         return self.task
     

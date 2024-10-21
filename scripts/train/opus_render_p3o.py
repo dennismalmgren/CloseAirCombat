@@ -50,7 +50,7 @@ def main(cfg: DictConfig):  # noqa: F821
     critic = value_module
 
     load_model = True
-    load_from_saved_models = True
+    load_from_saved_models = False
     #debug outputs is at the root.
     #commandline outputs is at scripts/patrol/outputs
     if load_model:

@@ -6,7 +6,8 @@ from ..reward_functions import (
     SafeAltitudeReward, 
     OpusAltitudeSpeedHeadingReward,
     OpusAltitudeReward,
-    OpusSmoothingReward
+    OpusSmoothingReward,
+    OpusOnlyAltitudeSpeedHeadingReward
 )
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout
 from ..utils.utils import LLA2NED, NED2LLA
@@ -26,6 +27,10 @@ class OpusSmoothingTask(BaseTask):
             SafeAltitudeReward(self.config),
         ]
 
+        self.logged_reward_functions = [
+            OpusOnlyAltitudeSpeedHeadingReward(self.config),
+        ]
+        
         self.termination_conditions = [
             ExtremeState(self.config),
             Overload(self.config),

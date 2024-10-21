@@ -14,3 +14,4 @@ from .opus_altitude_speed_heading_reward import OpusAltitudeSpeedHeadingReward
 from .opus_altitude_speed_reward import OpusAltitudeSpeedReward
 from .opus_smoothing_reward import OpusSmoothingReward
 from .opus_only_smoothing_reward import OpusOnlySmoothingReward
+from .opus_only_altitude_speed_heading_reward import OpusOnlyAltitudeSpeedHeadingReward
