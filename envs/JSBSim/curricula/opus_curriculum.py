@@ -15,6 +15,22 @@ class OpusCurriculum(BaseCurriculum):
         self.max_velocities_vc_mps_increment = 100 #m/s
         self.check_interval = 30 #seconds
         self.increment_size = [0.2, 0.4, 0.6, 0.8, 1.0] 
+        #scenario 1
+        #self.seeds = [2, 14, 18, 29, 34, 17]
+        #self.init_seed = 13
+        #scenario 2
+        #self.seeds = [21, 141, 181, 219, 341, 117]
+        #self.init_seed = 67
+        #scenario 3
+        #self.seeds = [1, 11, 12, 27, 3419, 817]
+        #self.init_seed = 22
+        #scenario 4
+        #self.seeds = [77, 99, 33, 44, 55, 66]
+        #self.init_seed = 188
+        #scenario 5
+        self.seeds = [1111, 2995, 1212, 6543, 88, 7]
+        self.init_seed = 99
+
         self.heading_turn_counts = 0
         self.include_turns_episode = False
 
@@ -24,13 +40,19 @@ class OpusCurriculum(BaseCurriculum):
     
     def create_init_states(self, env):
         agent_init_states = dict()
+        env.seed(self.init_seed)
         for agent_id in env.agents:
             #we also need to update location.
+            #init_heading_deg = env.np_random.uniform(0., 180.)
+            #init_altitude_m = env.np_random.uniform(2500., 9000.)
+            #init_velocities_u_mps = env.np_random.uniform(120., 365.)
+            #init_lat_geod_deg = env.np_random.uniform(57.0, 60.0)
+            #init_long_gc_deg = env.np_random.uniform(15.0, 20.0)
             init_heading_deg = env.np_random.uniform(0., 180.)
             init_altitude_m = env.np_random.uniform(2500., 9000.)
             init_velocities_u_mps = env.np_random.uniform(120., 365.)
             init_lat_geod_deg = env.np_random.uniform(57.0, 60.0)
-            init_long_gc_deg = env.np_random.uniform(15.0, 20.0)
+            init_long_gc_deg = env.np_random.uniform(15.0, 20.0)            
             agent_init_states[agent_id] = {
                 'ic_psi_true_deg': init_heading_deg,
                 'ic_h_sl_ft': init_altitude_m / 0.3048,
@@ -45,7 +67,7 @@ class OpusCurriculum(BaseCurriculum):
 
         self.heading_turn_counts = 0
 
-        self.include_turns_episode = True
+        self.include_turns_episode = False
         #self.include_turns_episode = True
         for agent_id in env.agents:
             agent = env.agents[agent_id]
@@ -61,8 +83,8 @@ class OpusCurriculum(BaseCurriculum):
 
     def load_task(self):
         #taskname = getattr(self.config, 'task', None)
-        #self.task = OpusAltitudeSpeedHeadingTask(self.config)
-        self.task = OpusSmoothingTask(self.config)
+        self.task = OpusAltitudeSpeedHeadingTask(self.config)
+        #self.task = OpusSmoothingTask(self.config)
         #self.task = OpusAltitudeTask(self.config)
         return self.task
     
@@ -86,6 +108,7 @@ class OpusCurriculum(BaseCurriculum):
 
         if current_time >= check_time and self.include_turns_episode:
             heading_turn_count = min(self.heading_turn_counts, len(self.increment_size) - 1)
+            env.seed(self.seeds[heading_turn_count])
             delta = self.increment_size[heading_turn_count]
             delta_heading = env.np_random.uniform(-delta, delta) * self.max_heading_increment
             delta_altitude = env.np_random.uniform(-delta, delta) * self.max_altitude_increment
